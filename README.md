@@ -1,20 +1,19 @@
-# SMS Marketing CRM
+# SignalMint
 
-A compliant two-way SMS CRM and SMS marketing SaaS MVP for US/UK businesses using Node.js, React, SQLite, and Vonage SMS.
+SignalMint is a business texting SaaS MVP for teams that need a Google Voice / OpenPhone-style workspace for SMS conversations, contacts, and business numbers. It uses Node.js, React, SQLite, and Vonage SMS, with safe mock SMS mode for local development.
 
 The app supports:
 
 - JWT authentication
 - Contacts and consent tracking
-- OpenPhone / Google Voice style manual SMS dialer
+- OpenPhone / Google Voice inspired messages workspace
 - Two-way inbox
 - Mock SMS mode for local development
 - Real Vonage sending when credentials are configured
 - STOP/unsubscribe handling
 - Delivery status webhook simulation
-- Campaign drafts, previews, and mock queueing
 - Sender number management
-- Dashboard, reports, settings, and compliance pages
+- Settings and compliance guidance
 
 ## Project Structure
 
@@ -26,6 +25,22 @@ TESTING.md   Automated and manual test steps
 ```
 
 The old partial `client/` app has been removed. Use `client-app/`.
+
+## Demo Login
+
+Run the seed command:
+
+```powershell
+Set-Location "D:\SMS Marketing App\server"
+npm run seed
+```
+
+Then log in with:
+
+```text
+admin@ftsolutions.local
+password123
+```
 
 ## Backend Setup
 

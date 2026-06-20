@@ -51,6 +51,10 @@
 
 ## Rebuild Plan
 
+### Pivot Update
+
+The product direction has moved away from an SMS marketing dashboard and toward **SignalMint**, a business texting workspace inspired by Google Voice / OpenPhone interaction patterns. Campaigns, reports, and compliance should not dominate primary navigation. The default post-login experience should be Messages.
+
 1. Clean project structure:
    - Rebuild `client-app` as the real React app with `src/`.
    - Remove generated/static frontend artifacts from `public/`.
@@ -73,6 +77,8 @@
    - Use a polished SaaS layout with sidebar/topbar, cards, tables, modals, empty/loading/error states.
    - Make Manual SMS feel like a real business phone app.
    - Make Inbox feel like a real two-way messaging app.
+   - Replace dashboard-first navigation with Messages, Contacts, Dialpad / New Text, Numbers, and Settings.
+   - Add SignalMint logo, favicon, sidebar identity, and polished brand palette.
 
 4. Add tests:
    - Add `server/scripts/smoke-test.js`.

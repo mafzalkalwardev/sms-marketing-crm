@@ -62,6 +62,9 @@ async function main() {
 
   const conversations = await request('/api/inbox/conversations', { token });
   if (!Array.isArray(conversations) || conversations.length === 0) throw new Error('Expected at least one conversation');
+  const conversationApi = await request('/api/conversations', { token });
+  if (!Array.isArray(conversationApi) || conversationApi.length === 0) throw new Error('Expected /api/conversations to return threads');
+  await request(`/api/conversations/${conversationApi[0].id}/messages`, { token });
 
   await request('/webhooks/vonage/inbound', {
     method: 'POST',

@@ -50,7 +50,7 @@ export default function ManualSms() {
 
   return (
     <>
-      <Topbar title="Manual SMS" subtitle="Dialpad-style business texting" />
+      <Topbar title="Dialpad / New Text" subtitle="Start a business text by number or contact" />
       <section className="phone-workspace">
         <aside className="panel phone-rail">
           <div className="line-card"><span className="line-dot" /><div><strong>Main business line</strong><small>{form.from || 'Mock sender'}</small></div></div>
@@ -75,8 +75,8 @@ export default function ManualSms() {
           <div className="composer">
             <textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} placeholder="Type a text message..." required />
             <div className="composer-footer">
-              <span>{form.message.length} chars · {segmentCount} segments · est. ${estimatedCost}</span>
-              <Button disabled={!canSend}>Send SMS</Button>
+              <span>{form.message.length} chars · {segmentCount} SMS segment{segmentCount === 1 ? '' : 's'} · est. ${estimatedCost}</span>
+              <Button disabled={!canSend}>Send text</Button>
             </div>
           </div>
           {status && <div className={status.startsWith('Mock') || status.startsWith('Message') ? 'alert success' : 'alert'}>{status}</div>}

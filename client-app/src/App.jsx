@@ -1,35 +1,28 @@
 import { useState } from 'react';
 import { useAuth } from './auth/AuthContext';
 import Sidebar from './components/Sidebar';
-import Dashboard from './pages/Dashboard';
 import Contacts from './pages/Contacts';
 import ManualSms from './pages/ManualSms';
-import Inbox from './pages/Inbox';
-import Campaigns from './pages/Campaigns';
+import Messages from './pages/Inbox';
 import Numbers from './pages/Numbers';
-import Reports from './pages/Reports';
 import Settings from './pages/Settings';
-import Compliance from './pages/Compliance';
 import Login from './pages/Login';
 
 const pages = {
-  dashboard: Dashboard,
+  messages: Messages,
   contacts: Contacts,
-  manual: ManualSms,
-  inbox: Inbox,
-  campaigns: Campaigns,
+  newText: ManualSms,
   numbers: Numbers,
-  reports: Reports,
   settings: Settings,
-  compliance: Compliance,
 };
 
 export default function App() {
-  const { user, logout } = useAuth();
-  const [page, setPage] = useState('dashboard');
+  const { user, loading, logout } = useAuth();
+  const [page, setPage] = useState('messages');
+  if (loading) return <div className="auth-loading">Loading SignalMint...</div>;
   if (!user) return <Login />;
 
-  const Page = pages[page] || Dashboard;
+  const Page = pages[page] || Messages;
   return (
     <div className="app-shell">
       <Sidebar page={page} setPage={setPage} user={user} logout={logout} />

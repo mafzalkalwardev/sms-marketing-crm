@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import { useAuth } from '../auth/AuthContext';
+import Logo from '../components/Logo';
 
 export default function Login() {
   const { login, register } = useAuth();
@@ -32,14 +33,15 @@ export default function Login() {
   return (
     <main className="auth-page">
       <section className="auth-hero">
+        <Logo />
         <p className="eyebrow">Compliant SMS CRM</p>
-        <h1>Business texting, campaigns, replies, and opt-outs in one workspace.</h1>
-        <p>SignalMint gives small teams an OpenPhone-style messaging workflow with consent tracking, Vonage-ready sends, mock mode for local testing, and campaign analytics.</p>
+        <h1>Business texting, customer replies, and phone-number management in one workspace.</h1>
+        <p>SignalMint gives small teams a polished messaging inbox with contacts, business lines, mock local sending, and Vonage-ready delivery when credentials are configured.</p>
         <div className="proof-grid">
-          <span>Dialpad-style SMS</span>
+          <span>Shared messages inbox</span>
           <span>Two-way inbox</span>
           <span>STOP automation</span>
-          <span>Campaign planner</span>
+          <span>Business numbers</span>
         </div>
       </section>
       <section className="auth-card">

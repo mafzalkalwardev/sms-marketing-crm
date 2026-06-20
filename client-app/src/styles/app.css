@@ -1,12 +1,13 @@
 :root {
-  --bg: #f4f7fb;
+  --bg: #f5f7f6;
   --surface: #ffffff;
-  --surface-2: #eef3f8;
+  --surface-2: #eef4f1;
   --text: #101828;
   --muted: #667085;
-  --line: #d8e1ec;
-  --brand: #2563eb;
-  --brand-dark: #1746a2;
+  --line: #d9e4df;
+  --brand: #12312b;
+  --brand-dark: #0b241f;
+  --mint: #2ed3a6;
   --ok: #047857;
   --warning: #b45309;
   --danger: #dc2626;
@@ -17,7 +18,7 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter,
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 .auth-page { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(360px, 480px); }
-.auth-hero { padding: 72px; display: flex; flex-direction: column; justify-content: center; background: linear-gradient(135deg, #10233f, #1746a2 52%, #047857); color: white; }
+.auth-hero { padding: 72px; display: flex; flex-direction: column; justify-content: center; background: radial-gradient(circle at 20% 20%, rgba(46,211,166,.2), transparent 32%), linear-gradient(135deg, #10231f, #12312b 52%, #0f5f4d); color: white; }
 .auth-hero h1 { margin: 0; max-width: 800px; font-size: 54px; line-height: 1.02; }
 .auth-hero p { max-width: 680px; color: rgba(255,255,255,.84); font-size: 18px; line-height: 1.7; }
 .proof-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 220px)); gap: 12px; margin-top: 28px; }
@@ -27,11 +28,24 @@ button { cursor: pointer; }
 .auth-tabs button { border: 0; background: transparent; color: var(--muted); padding: 10px; border-radius: 6px; }
 .auth-tabs button.active { background: white; color: var(--text); box-shadow: 0 1px 6px rgba(16,24,40,.08); }
 .app-shell { min-height: 100vh; display: grid; grid-template-columns: 268px minmax(0, 1fr); }
-.sidebar { position: sticky; top: 0; height: 100vh; padding: 20px; background: #111827; color: white; display: flex; flex-direction: column; }
-.brand { display: flex; align-items: center; gap: 12px; padding-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,.12); }
+.sidebar { position: sticky; top: 0; height: 100vh; padding: 20px; background: #10231f; color: white; display: flex; flex-direction: column; }
+.brand { display: flex; align-items: center; gap: 12px; padding-bottom: 18px; border-bottom: 1px solid rgba(255,255,255,.12); }
+.logo { display: flex; align-items: center; gap: 12px; color: inherit; }
+.logo-mark { width: 46px; height: 46px; flex: 0 0 auto; }
+.logo-mark rect { fill: var(--mint); }
+.logo-mark path { fill: none; stroke: var(--brand); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.logo-mark .wave { stroke: var(--mint); }
+.auth-hero .logo { margin-bottom: 28px; }
+.auth-hero .logo-mark { width: 56px; height: 56px; }
+.auth-hero .logo-mark path:not(.wave) { stroke: #10231f; }
+.logo strong { display: block; font-size: 18px; }
+.logo small { display: block; color: rgba(255,255,255,.68); margin-top: 2px; }
 .brand-mark, .avatar { display: grid; place-items: center; border-radius: 8px; background: var(--brand); color: white; font-weight: 900; }
 .brand-mark { width: 42px; height: 42px; }
 .brand span, .sidebar-footer small { display: block; color: rgba(255,255,255,.64); margin-top: 3px; }
+.line-identity { margin: 18px 0 4px; padding: 12px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: rgba(255,255,255,.06); }
+.line-identity span { display: block; color: rgba(255,255,255,.62); font-size: 12px; margin-bottom: 4px; }
+.line-identity strong { font-size: 13px; }
 .sidebar nav { display: grid; gap: 6px; margin-top: 22px; }
 .sidebar nav button, .btn.ghost { border: 1px solid transparent; background: transparent; color: inherit; text-align: left; padding: 11px 12px; border-radius: 8px; }
 .sidebar nav button:hover, .sidebar nav button.active { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.12); }
@@ -91,7 +105,7 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
 .phone-header, .chat-header { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
 .phone-header h3, .chat-header h3 { margin: 0; }
 .phone-header span, .chat-header span { color: var(--muted); }
-.avatar { width: 44px; height: 44px; border-radius: 999px; background: #dbeafe; color: var(--brand-dark); }
+.avatar { width: 44px; height: 44px; border-radius: 999px; background: #dff8ef; color: var(--brand-dark); }
 .avatar.small { width: 36px; height: 36px; font-size: 13px; }
 .avatar.large { width: 72px; height: 72px; font-size: 26px; }
 .thread { display: flex; flex-direction: column; gap: 12px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: #f8fbff; overflow: auto; }
@@ -106,6 +120,8 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
 .composer textarea, .reply-bar textarea { min-height: 78px; }
 .composer-footer, .chat-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .conversation-dock { display: grid; gap: 10px; align-content: start; padding: 14px; }
+.dock-header { display: flex; justify-content: space-between; align-items: center; color: var(--muted); padding: 4px 2px; }
+.dock-header strong { color: var(--text); }
 .conversation-dock button { width: 100%; border: 1px solid transparent; background: white; border-radius: 8px; padding: 12px; text-align: left; display: flex; gap: 10px; }
 .conversation-dock button.active, .conversation-dock button:hover { border-color: #bfdbfe; background: #eff6ff; }
 .conversation-dock span, .conversation-dock small { display: block; color: var(--muted); margin-top: 3px; }
@@ -122,5 +138,6 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
 .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .checkbox { display: flex; align-items: center; gap: 8px; color: var(--muted); font-weight: 800; }
 .checkbox input { width: auto; }
+.auth-loading { min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--brand); font-weight: 900; }
 @media (max-width: 1080px) { .auth-page, .app-shell, .two-column, .split-layout, .phone-workspace, .messenger-layout { grid-template-columns: 1fr; } .sidebar { position: static; height: auto; } .sidebar nav { grid-template-columns: repeat(2, minmax(0,1fr)); } .stat-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
 @media (max-width: 680px) { .workspace { padding: 18px; } .auth-hero { padding: 40px 24px; } .auth-hero h1 { font-size: 36px; } .auth-card { margin: 24px; } .proof-grid, .stat-grid, .form-row, .filters { grid-template-columns: 1fr; } table { font-size: 13px; } }

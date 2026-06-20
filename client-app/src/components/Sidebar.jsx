@@ -1,24 +1,22 @@
+import Logo from './Logo';
+
 const items = [
-  ['dashboard', 'Dashboard'],
-  ['manual', 'Manual SMS'],
-  ['inbox', 'Inbox'],
+  ['messages', 'Messages'],
   ['contacts', 'Contacts'],
-  ['campaigns', 'Campaigns'],
+  ['newText', 'Dialpad / New Text'],
   ['numbers', 'Numbers'],
-  ['reports', 'Reports'],
   ['settings', 'Settings'],
-  ['compliance', 'Compliance'],
 ];
 
 export default function Sidebar({ page, setPage, user, logout }) {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="brand-mark">SM</div>
-        <div>
-          <strong>SignalMint</strong>
-          <span>SMS CRM</span>
-        </div>
+        <Logo />
+      </div>
+      <div className="line-identity">
+        <span>Workspace line</span>
+        <strong>Mock business number</strong>
       </div>
       <nav>
         {items.map(([id, label]) => (

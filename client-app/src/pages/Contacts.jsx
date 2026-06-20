@@ -28,6 +28,10 @@ export default function Contacts() {
     await api(`/api/contacts/${id}`, { method: 'DELETE' });
     contacts.refresh();
   };
+  const messageContact = async (contact) => {
+    await api('/api/conversations/start', { method: 'POST', body: { phone: contact.phone, name: contact.name } });
+    alert('Conversation started. Open Messages to continue the thread.');
+  };
 
   return (
     <>
@@ -52,7 +56,7 @@ export default function Contacts() {
                   <td>{contact.country}</td>
                   <td><span className={`badge ${contact.consent_status}`}>{contact.consent_status}</span></td>
                   <td>{contact.is_unsubscribed ? <span className="badge danger">unsubscribed</span> : <span className="badge active">active</span>}</td>
-                  <td className="row-actions"><Button variant="ghost" onClick={() => setModal(contact)}>Edit</Button><Button variant="danger" onClick={() => remove(contact.id)}>Delete</Button></td>
+                  <td className="row-actions"><Button variant="ghost" onClick={() => messageContact(contact)}>Message</Button><Button variant="ghost" onClick={() => navigator.clipboard?.writeText(contact.phone)}>Copy</Button><Button variant="ghost" onClick={() => setModal(contact)}>Edit</Button><Button variant="danger" onClick={() => remove(contact.id)}>Delete</Button></td>
                 </tr>
               ))}
             </tbody>

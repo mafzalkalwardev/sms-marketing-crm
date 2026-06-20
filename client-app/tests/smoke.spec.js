@@ -8,15 +8,15 @@ test('registers and sends a mock SMS from the dialer', async ({ page }) => {
   await page.getByLabel('Email').fill(`frontend-smoke-${stamp}@example.com`);
   await page.getByLabel('Password').fill('SmokeTest123!');
   await page.getByRole('button', { name: 'Create workspace' }).click();
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Messages' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Manual SMS' }).click();
-  await expect(page.getByRole('heading', { name: 'Manual SMS' })).toBeVisible();
+  await page.getByRole('button', { name: 'Dialpad / New Text' }).click();
+  await expect(page.getByRole('heading', { name: 'Dialpad / New Text' })).toBeVisible();
   await page.getByLabel('Recipient').fill(`+1555${String(stamp).slice(-7)}`);
   await page.getByPlaceholder('Type a text message...').fill('Frontend smoke SMS. Reply STOP to opt out.');
-  await page.getByRole('button', { name: 'Send SMS' }).click();
+  await page.getByRole('button', { name: 'Send text' }).click();
   await expect(page.getByText('Mock SMS sent')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Inbox' }).click();
-  await expect(page.getByRole('heading', { name: 'Inbox' })).toBeVisible();
+  await page.getByRole('button', { name: 'Messages' }).click();
+  await expect(page.getByRole('heading', { name: 'Messages' })).toBeVisible();
 });

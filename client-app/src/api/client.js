@@ -1,5 +1,11 @@
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
+let unauthorizedHandler = null;
+
+export function setUnauthorizedHandler(handler) {
+  unauthorizedHandler = handler;
+}
+
 export async function api(path, options = {}) {
   const token = localStorage.getItem('token');
   const response = await fetch(`${API_BASE}${path}`, {
@@ -13,6 +19,10 @@ export async function api(path, options = {}) {
   });
   const text = await response.text();
   const data = text ? JSON.parse(text) : {};
+  if (response.status === 401) {
+    if (unauthorizedHandler) unauthorizedHandler();
+    throw new Error('Session expired. Please log in again.');
+  }
   if (!response.ok) throw new Error(data.error || data.details || 'Request failed');
   return data;
 }

@@ -67,15 +67,16 @@ npm run test:e2e
 ## Manual UAT Steps
 
 1. Open `http://localhost:3000`.
-2. Register a new account.
-3. Open Dashboard and confirm KPI cards load.
-4. Open Contacts and add an opted-in US contact.
-5. Open Numbers and add a default sender number.
-6. Open Manual SMS, select the contact, type a message, and send.
+2. Run `npm run seed` in `server` and login with `admin@ftsolutions.local` / `password123`, or register a new account.
+3. Confirm the app opens directly to Messages.
+4. Confirm conversations and message bubbles appear.
+5. Open Contacts and add an opted-in US contact.
+6. Open Numbers and add a default sender number.
+7. Open Dialpad / New Text, select the contact, type a message, and send.
 7. Confirm mock-mode success appears if Vonage credentials are missing.
-8. Open Inbox and confirm the conversation appears.
+8. Open Messages and confirm the conversation appears.
 9. Use the inbound webhook endpoint to send `STOP`.
 10. Confirm the contact is marked unsubscribed and Manual SMS blocks further sends.
 11. Create a campaign and preview recipients.
 12. Open Settings and confirm Vonage status shows mock/configured correctly.
-13. Open Compliance and review opt-out keyword checklist.
+13. Review opt-out keyword checklist inside Settings.
