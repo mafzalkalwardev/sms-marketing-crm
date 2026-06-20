@@ -1,6 +1,11 @@
 node_modules/
-*.db
 .env
+.env.local
+*.db
+server/sms_crm.db
 .DS_Store
-/dist
-/build
+dist/
+build/
+client-app/build/
+client-app/test-results/
+client-app/playwright-report/
