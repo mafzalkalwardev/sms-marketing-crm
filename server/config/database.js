@@ -1,5 +1,7 @@
 const Database = require('better-sqlite3');
-const db = new Database('sms_crm.db');
+const path = require('path');
+
+const db = new Database(path.join(__dirname, '..', 'sms_crm.db'));
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
@@ -58,6 +60,7 @@ CREATE TABLE IF NOT EXISTS messages (
   workspace_id INTEGER DEFAULT 1,
   campaign_id INTEGER,
   contact_id INTEGER,
+  conversation_id INTEGER,
   direction TEXT DEFAULT 'outbound',
   to_number TEXT,
   from_number TEXT,
@@ -92,6 +95,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   contact_id INTEGER,
   assigned_to INTEGER,
   status TEXT DEFAULT 'open',
+  unread_count INTEGER DEFAULT 0,
   last_message_at TEXT DEFAULT CURRENT_TIMESTAMP,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -128,5 +132,24 @@ CREATE TABLE IF NOT EXISTS webhook_logs (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 `);
+
+function columnExists(table, column) {
+  return db.prepare(`PRAGMA table_info(${table})`).all().some((row) => row.name === column);
+}
+
+function addColumn(table, column, definition) {
+  if (!columnExists(table, column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+addColumn('messages', 'conversation_id', 'INTEGER');
+addColumn('conversations', 'unread_count', 'INTEGER DEFAULT 0');
+
+db.prepare('INSERT OR IGNORE INTO workspaces (id, company_name, status, country) VALUES (1, ?, ?, ?)').run(
+  'Default Workspace',
+  'trial',
+  'US'
+);
 
 module.exports = { db };

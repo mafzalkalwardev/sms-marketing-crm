@@ -12,6 +12,11 @@ const reportRoutes = require('./routes/reports');
 const webhookRoutes = require('./routes/webhooks');
 const { db } = require('./config/database');
 
+if (!process.env.JWT_SECRET) {
+  console.error('Missing JWT_SECRET. Set it in server/.env before starting the backend.');
+  process.exit(1);
+}
+
 const app = express();
 
 app.use(cors());
@@ -29,7 +34,12 @@ app.use('/api/numbers', numberRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/webhooks/vonage', webhookRoutes);
 
-app.get('/api/health', (req, res) => res.json({ ok: true }));
+app.get('/api/health', (req, res) => res.json({ ok: true, mockSms: !(process.env.VONAGE_API_KEY && process.env.VONAGE_API_SECRET) }));
+
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+});
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
