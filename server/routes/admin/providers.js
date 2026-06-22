@@ -23,12 +23,15 @@ function maskValue(value, visible = 4) {
 
 function vonageStatusPayload() {
   const status = getProviderStatus();
-  const baseUrl = (process.env.PUBLIC_BACKEND_URL || `http://localhost:${process.env.PORT || 5000}`).replace(/\/$/, '');
+  const configuredPublicUrl = process.env.PUBLIC_BACKEND_URL || '';
+  const publicUrlIsPlaceholder = configuredPublicUrl.includes('your-ngrok-url');
+  const baseUrl = (publicUrlIsPlaceholder ? '' : configuredPublicUrl || `http://localhost:${process.env.PORT || 5000}`).replace(/\/$/, '');
   return {
     ...status,
     status: status.configured ? 'configured' : 'not_configured',
     apiKeyMasked: maskValue(process.env.VONAGE_API_KEY),
     defaultSenderMasked: maskValue(process.env.VONAGE_DEFAULT_FROM, 4),
+    publicBackendUrlConfigured: Boolean(configuredPublicUrl && !publicUrlIsPlaceholder),
     webhookUrls: {
       inbound: `${baseUrl}/webhooks/vonage/inbound`,
       status: `${baseUrl}/webhooks/vonage/status`,

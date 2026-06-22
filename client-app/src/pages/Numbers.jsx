@@ -9,11 +9,12 @@ export default function Numbers() {
   const numbers = useAsync(() => api('/api/numbers'), []);
   const create = async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const body = Object.fromEntries(form.entries());
     body.is_default = form.get('is_default') === 'on';
     await api('/api/numbers', { method: 'POST', body });
-    event.currentTarget.reset();
+    formElement.reset();
     numbers.refresh();
   };
   const setDefault = async (number) => {

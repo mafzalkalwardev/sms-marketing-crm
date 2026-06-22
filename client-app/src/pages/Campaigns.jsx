@@ -13,11 +13,12 @@ export default function Campaigns() {
 
   const create = async (event) => {
     event.preventDefault();
-    const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+    const formElement = event.currentTarget;
+    const body = Object.fromEntries(new FormData(formElement).entries());
     body.send_rate = Number(body.send_rate) || 1;
     try {
       await api('/api/campaigns', { method: 'POST', body });
-      event.currentTarget.reset();
+      formElement.reset();
       campaigns.refresh();
     } catch (error) {
       setError(error.message);
