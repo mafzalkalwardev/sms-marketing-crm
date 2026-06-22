@@ -8,6 +8,9 @@ const authenticate = (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(decoded.id);
     if (!user) return res.status(401).json({ error: 'Invalid user' });
+    if (user.status !== 'active') {
+      return res.status(403).json({ error: 'Account is inactive or suspended' });
+    }
     req.user = user;
     next();
   } catch {
@@ -20,4 +23,6 @@ const authorize = (roles) => (req, res, next) => {
   next();
 };
 
-module.exports = { authenticate, authorize };
+const requireAdmin = authorize(['admin']);
+
+module.exports = { authenticate, authorize, requireAdmin };

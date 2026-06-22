@@ -2,30 +2,36 @@ import { useState } from 'react';
 import { useAuth } from './auth/AuthContext';
 import Sidebar from './components/Sidebar';
 import Contacts from './pages/Contacts';
-import ManualSms from './pages/ManualSms';
-import Messages from './pages/Inbox';
 import Numbers from './pages/Numbers';
 import Settings from './pages/Settings';
+import Inbox from './pages/Inbox';
+import ManualSms from './pages/ManualSms';
+import AdminConsole from './pages/AdminConsole';
 import Login from './pages/Login';
+import Logo from './components/Logo';
 
 const pages = {
-  messages: Messages,
+  messages: Inbox,
   contacts: Contacts,
   newText: ManualSms,
   numbers: Numbers,
   settings: Settings,
+  admin: AdminConsole,
 };
 
 export default function App() {
-  const { user, loading, logout } = useAuth();
+  const { user, loading } = useAuth();
   const [page, setPage] = useState('messages');
-  if (loading) return <div className="auth-loading">Loading SignalMint...</div>;
+
+  if (loading) return <div className="auth-loading"><Logo />Loading workspace...</div>;
   if (!user) return <Login />;
 
-  const Page = pages[page] || Messages;
+  const isAdmin = user.role === 'admin';
+  const Page = page === 'admin' && !isAdmin ? Inbox : (pages[page] || Inbox);
+
   return (
     <div className="app-shell">
-      <Sidebar page={page} setPage={setPage} user={user} logout={logout} />
+      <Sidebar page={page} setPage={setPage} user={user} logout={useAuth().logout} />
       <main className="workspace">
         <Page />
       </main>

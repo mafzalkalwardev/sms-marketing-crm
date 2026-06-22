@@ -2,7 +2,7 @@ const express = require('express');
 const { db } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
 const { findOrCreateConversation, messagePreview } = require('../lib/conversations');
-const { normalizePhone, countSegments, estimateCost, sendSms } = require('../lib/sms');
+const { normalizePhone, sendTextMessage } = require('../services/smsService');
 
 const router = express.Router();
 router.use(authenticate);
@@ -44,19 +44,22 @@ router.post('/conversations/:id/reply', async (req, res, next) => {
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
     if (conversation.is_unsubscribed) return res.status(403).json({ error: 'This contact is unsubscribed.' });
 
-    const to = normalizePhone(conversation.phone);
-    const sender = normalizePhone(from || process.env.VONAGE_SENDER_NUMBER || '');
-    const provider = await sendSms({ to, from: sender, text: message });
-    const segments = countSegments(message);
-
-    db.prepare(
-      `INSERT INTO messages (
-        workspace_id, contact_id, conversation_id, direction, to_number, from_number,
-        message_body, provider, provider_message_id, status, segments, cost_estimate, sent_at
-      ) VALUES (?, ?, ?, 'outbound', ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
-    ).run(workspaceId, conversation.contact_id, conversation.id, to, sender, message, provider.mode === 'mock' ? 'mock' : 'vonage', provider.messageId, provider.status, segments, estimateCost(segments, conversation.country));
-    findOrCreateConversation({ workspaceId, contactId: conversation.contact_id });
-    res.json({ ok: true, mode: provider.mode, status: provider.status, messageId: provider.messageId });
+    const result = await sendTextMessage({
+      user: req.user,
+      to: conversation.phone,
+      from,
+      message,
+      contactName: conversation.name,
+      workspaceId,
+    });
+    res.status(result.ok ? 200 : 502).json({
+      ok: result.ok,
+      mode: result.mode,
+      status: result.status,
+      providerMessageId: result.providerMessageId,
+      message: result.message,
+      error: result.error,
+    });
   } catch (error) {
     next(error);
   }

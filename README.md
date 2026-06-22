@@ -58,15 +58,48 @@ PORT=5000
 JWT_SECRET=replace_with_a_long_secret
 ```
 
-Optional Vonage env:
+Mock mode is the default. Use this for local development:
 
 ```text
+VONAGE_MOCK_MODE=true
 VONAGE_API_KEY=your_vonage_api_key
 VONAGE_API_SECRET=your_vonage_api_secret
-VONAGE_SENDER_NUMBER=+15551234567
+VONAGE_SIGNATURE_SECRET=your_vonage_signed_webhook_signature_secret
+VONAGE_DEFAULT_FROM=your_vonage_sender_number_or_sender_id
+PUBLIC_BACKEND_URL=https://your-ngrok-url.ngrok-free.app
 ```
 
-When Vonage credentials are missing, the backend automatically uses mock SMS mode and still saves messages as `sent_mock`.
+When Vonage credentials are missing or `VONAGE_MOCK_MODE=true`, the backend automatically uses mock SMS mode and still saves messages as `sent_mock`.
+
+## Vonage Live SMS Setup
+
+1. Rotate/regenerate the Vonage API secret if it was exposed anywhere.
+2. Copy `.env.example` to `server/.env`.
+3. Set `VONAGE_MOCK_MODE=false`, `VONAGE_API_KEY`, `VONAGE_API_SECRET`, `VONAGE_SIGNATURE_SECRET`, and `VONAGE_DEFAULT_FROM`.
+4. Start the backend.
+5. Start the frontend.
+6. For local webhooks, run:
+
+```powershell
+ngrok http 5000
+```
+
+7. Set Vonage webhooks:
+
+```text
+Inbound: https://your-ngrok-url.ngrok-free.app/webhooks/vonage/inbound
+Status: https://your-ngrok-url.ngrok-free.app/webhooks/vonage/status
+```
+
+8. In Admin Console -> Providers, send a live test SMS.
+9. Confirm delivery/status callbacks update message status.
+
+Security notes:
+
+- Never commit `.env`.
+- Never paste API secrets into prompts, logs, screenshots, or docs.
+- Rotate secrets immediately if exposed.
+- Signed webhook verification should be enabled for live mode.
 
 ## Frontend Setup
 

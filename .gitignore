@@ -1,7 +1,10 @@
 node_modules/
+.kilo/
 .env
+server/.env
 .env.local
 *.db
+sms_crm.db
 server/sms_crm.db
 .DS_Store
 dist/

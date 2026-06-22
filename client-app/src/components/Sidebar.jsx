@@ -1,6 +1,6 @@
 import Logo from './Logo';
 
-const items = [
+const baseItems = [
   ['messages', 'Messages'],
   ['contacts', 'Contacts'],
   ['newText', 'Dialpad / New Text'],
@@ -9,6 +9,7 @@ const items = [
 ];
 
 export default function Sidebar({ page, setPage, user, logout }) {
+  const items = user.role === 'admin' ? [...baseItems, ['admin', 'Admin Console']] : baseItems;
   return (
     <aside className="sidebar">
       <div className="brand">
