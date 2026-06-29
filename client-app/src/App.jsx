@@ -39,7 +39,7 @@ export default function App() {
     <div className="app-shell">
       <Sidebar page={page} setPage={setPage} user={user} logout={logout} />
       <main className="workspace">
-        <Page />
+        <Page setPage={setPage} />
       </main>
     </div>
   );

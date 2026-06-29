@@ -98,10 +98,12 @@ router.delete('/:id', async (req, res, next) => {
   }
 });
 
+const { normalizePhone } = require('../services/smsService');
+
 router.post('/save-from-conversation', async (req, res, next) => {
   try {
     const { phone, name, email, tags, notes, consent_status, conversation_id } = req.body;
-    const phoneNorm = phone.replace(/[^\d+]/g, '');
+    const phoneNorm = normalizePhone(phone);
     if (!phoneNorm) return res.status(400).json({ error: 'Phone number is required' });
 
     const userId = req.user.id;
@@ -136,7 +138,7 @@ router.post('/save-from-conversation', async (req, res, next) => {
       }
     }
 
-    res.json({ ok: true, contactId });
+    res.json({ ok: true, contactId, contact: await queryOne('SELECT * FROM contacts WHERE id = $1', [contactId]) });
   } catch (e) {
     next(e);
   }

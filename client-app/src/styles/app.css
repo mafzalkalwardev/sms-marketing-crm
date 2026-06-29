@@ -452,7 +452,68 @@ input:focus, select:focus, textarea:focus {
   border-bottom: 1px solid var(--line);
 }
 
-.chat-header-text { flex: 1; min-width: 0; }
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.unsaved-tag {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.save-contact-bar {
+  display: grid;
+  gap: 10px;
+  margin: 0 16px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, #eef2ff, #f8fafc);
+  border: 1px solid #c7d2fe;
+}
+
+.save-contact-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.save-contact-copy strong {
+  font-size: 14px;
+  color: var(--brand-dark);
+}
+
+.save-contact-copy span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.save-contact-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.save-contact-form input {
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.save-contact-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.save-name-field input {
+  background: #fafbff;
+  border-color: #c7d2fe;
+}
+
 .chat-header h3 { margin: 0; font-size: 17px; }
 .chat-header span { color: var(--muted); font-size: 13px; }
 

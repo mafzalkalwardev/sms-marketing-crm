@@ -7,8 +7,10 @@ import EmptyState from '../components/EmptyState';
 import MessageBubble from '../components/MessageBubble';
 import Modal from '../components/Modal';
 import ComposeForm from '../components/ComposeForm';
+import SaveContactBar from '../components/SaveContactBar';
+import { displayName, isSavedContact } from '../lib/contactUtils';
 
-export default function Inbox() {
+export default function Inbox({ setPage }) {
   const conversations = useAsync(() => api('/api/conversations'), []);
   const [selected, setSelected] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -22,6 +24,7 @@ export default function Inbox() {
   const filtered = conversations.data?.filter((c) =>
     `${c.name} ${c.phone}`.toLowerCase().includes(search.toLowerCase())
   ) || [];
+  const activeSaved = active ? isSavedContact(active) : true;
 
   useEffect(() => {
     if (!active) return;
@@ -52,6 +55,8 @@ export default function Inbox() {
     }
   };
 
+  const refreshAfterSave = () => conversations.refresh();
+
   return (
     <>
       <Topbar
@@ -74,23 +79,30 @@ export default function Inbox() {
             {!filtered.length && (
               <EmptyState title="No conversations" text="Tap New text to send your first message." />
             )}
-            {filtered.map((conversation) => (
-              <button
-                key={conversation.id}
-                type="button"
-                className={`inbox-item ${active?.id === conversation.id ? 'active' : ''}`}
-                onClick={() => setSelected(conversation.id)}
-              >
-                <div className="avatar small">{(conversation.name || conversation.phone || '?').charAt(0).toUpperCase()}</div>
-                <div className="inbox-item-body">
-                  <div className="inbox-item-top">
-                    <strong>{conversation.name || conversation.phone}</strong>
-                    {conversation.unread_count > 0 && <em>{conversation.unread_count}</em>}
+            {filtered.map((conversation) => {
+              const saved = isSavedContact(conversation);
+              const title = displayName(conversation);
+              return (
+                <button
+                  key={conversation.id}
+                  type="button"
+                  className={`inbox-item ${active?.id === conversation.id ? 'active' : ''}`}
+                  onClick={() => setSelected(conversation.id)}
+                >
+                  <div className="avatar small">{title.charAt(0).toUpperCase()}</div>
+                  <div className="inbox-item-body">
+                    <div className="inbox-item-top">
+                      <strong>{title}</strong>
+                      {conversation.unread_count > 0 && <em>{conversation.unread_count}</em>}
+                    </div>
+                    <small>
+                      {!saved && <span className="unsaved-tag">Unsaved · </span>}
+                      {conversation.lastMessage?.message_body || 'No messages yet'}
+                    </small>
                   </div>
-                  <small>{conversation.lastMessage?.message_body || 'No messages yet'}</small>
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
         </aside>
 
@@ -98,13 +110,29 @@ export default function Inbox() {
           {active ? (
             <>
               <div className="chat-header">
-                <div className="avatar">{(active.name || active.phone).charAt(0).toUpperCase()}</div>
+                <div className="avatar">{displayName(active).charAt(0).toUpperCase()}</div>
                 <div className="chat-header-text">
-                  <h3>{active.name || active.phone}</h3>
+                  <h3>{displayName(active)}</h3>
                   <span>{active.phone}</span>
                 </div>
-                {active.is_unsubscribed && <span className="badge danger">Unsubscribed</span>}
+                <div className="chat-header-actions">
+                  {!activeSaved && setPage && (
+                    <button type="button" className="text-btn" onClick={() => setPage('contacts')}>
+                      Contacts
+                    </button>
+                  )}
+                  {active.is_unsubscribed && <span className="badge danger">Unsubscribed</span>}
+                </div>
               </div>
+
+              {!activeSaved && (
+                <SaveContactBar
+                  phone={active.phone}
+                  name={active.name}
+                  conversationId={active.id}
+                  onSaved={refreshAfterSave}
+                />
+              )}
 
               <div className="thread">
                 {messages.length
@@ -140,9 +168,9 @@ export default function Inbox() {
           <ComposeForm
             onCancel={() => setComposeOpen(false)}
             onSent={() => {
-              setComposeOpen(false);
               conversations.refresh();
             }}
+            onContactSaved={() => conversations.refresh()}
           />
         </Modal>
       )}

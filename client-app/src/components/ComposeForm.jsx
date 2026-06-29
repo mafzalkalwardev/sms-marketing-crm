@@ -3,15 +3,18 @@ import { api } from '../api/client';
 import useAsync from '../hooks/useAsync';
 import Button from './Button';
 import Dialpad from './Dialpad';
+import SaveContactBar from './SaveContactBar';
 import { formatStatus } from '../lib/formatStatus';
+import { isSavedContact } from '../lib/contactUtils';
 
-export default function ComposeForm({ initialTo = '', onSent, onCancel }) {
+export default function ComposeForm({ initialTo = '', onSent, onCancel, onContactSaved }) {
   const contacts = useAsync(() => api('/api/contacts'), []);
   const numbers = useAsync(() => api('/api/numbers'), []);
-  const [form, setForm] = useState({ from: '', to: initialTo, message: '' });
+  const [form, setForm] = useState({ from: '', to: initialTo, message: '', saveName: '' });
   const [showKeypad, setShowKeypad] = useState(false);
   const [status, setStatus] = useState('');
   const [sending, setSending] = useState(false);
+  const [pendingSave, setPendingSave] = useState(null);
 
   const defaultNumber = useMemo(
     () => numbers.data?.find((n) => n.is_default) || numbers.data?.[0],
@@ -29,16 +32,39 @@ export default function ComposeForm({ initialTo = '', onSent, onCancel }) {
   }, [initialTo]);
 
   const selected = contacts.data?.find((c) => c.phone === form.to);
+  const isNewNumber = Boolean(form.to) && !isSavedContact({ phone: form.to, name: selected?.name });
   const canSend = Boolean(form.from && form.to && form.message.trim() && !selected?.is_unsubscribed);
+
+  const saveBeforeSend = async (phone, name) => {
+    if (!name.trim()) return;
+    await api('/api/contacts/save-from-conversation', {
+      method: 'POST',
+      body: { phone, name: name.trim() },
+    });
+    contacts.refresh();
+    onContactSaved?.();
+  };
 
   const send = async (event) => {
     event.preventDefault();
     setSending(true);
     setStatus('');
+    setPendingSave(null);
     try {
+      if (isNewNumber && form.saveName.trim()) {
+        await saveBeforeSend(form.to, form.saveName);
+      }
+
       const result = await api('/api/manual-sms/send', { method: 'POST', body: form });
       setStatus(`Sent · ${formatStatus(result.status)}`);
-      setForm((current) => ({ ...current, message: '' }));
+      setForm((current) => ({ ...current, message: '', saveName: '' }));
+
+      const stillUnsaved = !form.saveName.trim() && !isSavedContact({ phone: form.to, name: selected?.name });
+      if (stillUnsaved) {
+        setPendingSave({ phone: form.to, conversationId: result.conversationId });
+      }
+
+      contacts.refresh();
       onSent?.(result);
     } catch (error) {
       setStatus(error.message);
@@ -69,27 +95,44 @@ export default function ComposeForm({ initialTo = '', onSent, onCancel }) {
         <span>To</span>
         <input
           value={form.to}
-          onChange={(e) => setForm({ ...form, to: e.target.value })}
-          placeholder="Type a number or pick a contact below"
+          onChange={(e) => {
+            setPendingSave(null);
+            setForm({ ...form, to: e.target.value });
+          }}
+          placeholder="Type a number or pick a contact"
           list="compose-contacts"
           required
         />
         <datalist id="compose-contacts">
-          {contacts.data?.map((c) => (
-            <option key={c.id} value={c.phone}>{c.name || c.phone}</option>
+          {contacts.data?.filter((c) => isSavedContact(c)).map((c) => (
+            <option key={c.id} value={c.phone}>{c.name}</option>
           ))}
         </datalist>
       </label>
 
+      {isNewNumber && (
+        <label className="field save-name-field">
+          <span>Save to contacts (optional)</span>
+          <input
+            value={form.saveName}
+            onChange={(e) => setForm({ ...form, saveName: e.target.value })}
+            placeholder="Name for this number"
+          />
+        </label>
+      )}
+
       <div className="compose-quick-picks">
-        {contacts.data?.slice(0, 6).map((c) => (
+        {contacts.data?.filter((c) => isSavedContact(c)).slice(0, 8).map((c) => (
           <button
             key={c.id}
             type="button"
             className={`chip ${form.to === c.phone ? 'active' : ''}`}
-            onClick={() => setForm({ ...form, to: c.phone })}
+            onClick={() => {
+              setPendingSave(null);
+              setForm({ ...form, to: c.phone, saveName: '' });
+            }}
           >
-            {c.name || c.phone}
+            {c.name}
           </button>
         ))}
       </div>
@@ -124,6 +167,18 @@ export default function ComposeForm({ initialTo = '', onSent, onCancel }) {
 
       {status && (
         <div className={status.startsWith('Sent') ? 'alert success' : 'alert error'}>{status}</div>
+      )}
+
+      {pendingSave && (
+        <SaveContactBar
+          phone={pendingSave.phone}
+          conversationId={pendingSave.conversationId}
+          onSaved={() => {
+            setPendingSave(null);
+            contacts.refresh();
+            onContactSaved?.();
+          }}
+        />
       )}
 
       <div className="compose-actions">

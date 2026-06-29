@@ -7,7 +7,7 @@ import Input from '../components/Input';
 import Modal from '../components/Modal';
 import EmptyState from '../components/EmptyState';
 
-export default function Contacts() {
+export default function Contacts({ setPage }) {
   const [query, setQuery] = useState({ search: '', country: '', consent: '', unsubscribed: '' });
   const [modal, setModal] = useState(null);
   const params = useMemo(() => new URLSearchParams(Object.entries(query).filter(([, value]) => value)).toString(), [query]);
@@ -30,12 +30,12 @@ export default function Contacts() {
   };
   const messageContact = async (contact) => {
     await api('/api/conversations/start', { method: 'POST', body: { phone: contact.phone, name: contact.name } });
-    alert('Conversation started. Open Messages to continue the thread.');
+    if (setPage) setPage('messages');
   };
 
   return (
     <>
-      <Topbar title="Contacts" subtitle="CRM and consent" action={<Button onClick={() => setModal({})}>Add contact</Button>} />
+      <Topbar title="Contacts" subtitle="People you text — saved names show in your inbox." action={<Button onClick={() => setModal({})}>+ Add contact</Button>} />
       <section className="filters">
         <input placeholder="Search name, phone, email" value={query.search} onChange={(e) => setQuery({ ...query, search: e.target.value })} />
         <select value={query.country} onChange={(e) => setQuery({ ...query, country: e.target.value })}><option value="">All countries</option><option>US</option><option>UK</option></select>
