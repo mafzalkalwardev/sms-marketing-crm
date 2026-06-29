@@ -2,10 +2,10 @@ export default function Topbar({ title, subtitle, action }) {
   return (
     <header className="topbar">
       <div>
-        <p className="eyebrow">{subtitle}</p>
         <h1>{title}</h1>
+        {subtitle && <p className="topbar-sub">{subtitle}</p>}
       </div>
-      {action}
+      {action && <div className="topbar-action">{action}</div>}
     </header>
   );
 }

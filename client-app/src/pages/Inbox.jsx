@@ -6,12 +6,10 @@ import Button from '../components/Button';
 import EmptyState from '../components/EmptyState';
 import MessageBubble from '../components/MessageBubble';
 import Modal from '../components/Modal';
-import DialerWorkspace from '../components/DialerWorkspace';
-import { formatStatus } from '../lib/formatStatus';
+import ComposeForm from '../components/ComposeForm';
 
 export default function Inbox() {
   const conversations = useAsync(() => api('/api/conversations'), []);
-  const numbers = useAsync(() => api('/api/numbers'), []);
   const [selected, setSelected] = useState(null);
   const [messages, setMessages] = useState([]);
   const [reply, setReply] = useState('');
@@ -20,11 +18,10 @@ export default function Inbox() {
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
 
-  const active = conversations.data?.find((conversation) => conversation.id === selected) || conversations.data?.[0];
-  const filtered = conversations.data?.filter((conversation) =>
-    `${conversation.name} ${conversation.phone}`.toLowerCase().includes(search.toLowerCase())
+  const active = conversations.data?.find((c) => c.id === selected) || conversations.data?.[0];
+  const filtered = conversations.data?.filter((c) =>
+    `${c.name} ${c.phone}`.toLowerCase().includes(search.toLowerCase())
   ) || [];
-  const defaultLine = numbers.data?.find((n) => n.is_default)?.phone_number || numbers.data?.[0]?.phone_number;
 
   useEffect(() => {
     if (!active) return;
@@ -48,7 +45,7 @@ export default function Inbox() {
     }
   };
 
-  const keySend = (event) => {
+  const onReplyKey = (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       send();
@@ -58,95 +55,90 @@ export default function Inbox() {
   return (
     <>
       <Topbar
-        title="Messages"
-        subtitle={defaultLine ? `Business line ${defaultLine}` : 'Business texting inbox'}
-        action={<Button onClick={() => setComposeOpen(true)}>New message</Button>}
+        title="Inbox"
+        subtitle="Reply to customers and start new conversations."
+        action={<Button onClick={() => setComposeOpen(true)}>+ New text</Button>}
       />
+
       {error && <div className="alert error">{error}</div>}
-      <section className="messenger-layout">
-        <aside className="panel conversation-dock">
-          <div className="dock-header"><strong>Inbox</strong><span>{filtered.length} threads</span></div>
-          <input placeholder="Search conversations" value={search} onChange={(e) => setSearch(e.target.value)} />
-          {!filtered.length && <EmptyState title="No conversations yet" text="Start a new message from the dialpad." />}
-          {filtered.map((conversation) => (
-            <button
-              key={conversation.id}
-              type="button"
-              className={active?.id === conversation.id ? 'active' : ''}
-              onClick={() => setSelected(conversation.id)}
-            >
-              <div className="avatar small">{(conversation.name || conversation.phone || '?').charAt(0).toUpperCase()}</div>
-              <div>
-                <strong>{conversation.name || conversation.phone}</strong>
-                <span>{conversation.phone}</span>
-                <small>{conversation.lastMessage?.message_body || 'No messages yet'}</small>
-              </div>
-              {conversation.unread_count > 0 && <em>{conversation.unread_count}</em>}
-            </button>
-          ))}
+
+      <section className="inbox-layout">
+        <aside className="panel inbox-list">
+          <input
+            className="search-input"
+            placeholder="Search name or number..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <div className="inbox-list-scroll">
+            {!filtered.length && (
+              <EmptyState title="No conversations" text="Tap New text to send your first message." />
+            )}
+            {filtered.map((conversation) => (
+              <button
+                key={conversation.id}
+                type="button"
+                className={`inbox-item ${active?.id === conversation.id ? 'active' : ''}`}
+                onClick={() => setSelected(conversation.id)}
+              >
+                <div className="avatar small">{(conversation.name || conversation.phone || '?').charAt(0).toUpperCase()}</div>
+                <div className="inbox-item-body">
+                  <div className="inbox-item-top">
+                    <strong>{conversation.name || conversation.phone}</strong>
+                    {conversation.unread_count > 0 && <em>{conversation.unread_count}</em>}
+                  </div>
+                  <small>{conversation.lastMessage?.message_body || 'No messages yet'}</small>
+                </div>
+              </button>
+            ))}
+          </div>
         </aside>
 
-        <section className="panel chat-window">
+        <section className="panel chat-panel">
           {active ? (
             <>
               <div className="chat-header">
                 <div className="avatar">{(active.name || active.phone).charAt(0).toUpperCase()}</div>
-                <div>
+                <div className="chat-header-text">
                   <h3>{active.name || active.phone}</h3>
                   <span>{active.phone}</span>
                 </div>
-                <span className={`badge ${active.is_unsubscribed ? 'danger' : 'active'}`}>
-                  {active.is_unsubscribed ? 'Unsubscribed' : formatStatus(active.status)}
-                </span>
+                {active.is_unsubscribed && <span className="badge danger">Unsubscribed</span>}
               </div>
+
               <div className="thread">
                 {messages.length
                   ? messages.map((message) => <MessageBubble key={message.id} message={message} />)
-                  : <EmptyState title="No messages yet" text="Send a reply to start this thread." />}
+                  : <EmptyState title="Start chatting" text="Type a message below to reply." />}
               </div>
-              <div className="reply-bar">
+
+              <div className="reply-compose">
                 <textarea
                   value={reply}
-                  onKeyDown={keySend}
+                  onKeyDown={onReplyKey}
                   onChange={(e) => setReply(e.target.value)}
                   disabled={Boolean(active.is_unsubscribed)}
-                  placeholder={active.is_unsubscribed ? 'Contact is unsubscribed' : 'Write a message...'}
+                  placeholder={active.is_unsubscribed ? 'Contact unsubscribed' : 'Type your reply…'}
+                  rows={2}
                 />
-                <Button disabled={Boolean(active.is_unsubscribed) || sending} onClick={send}>
-                  {sending ? 'Sending...' : 'Send'}
+                <Button disabled={Boolean(active.is_unsubscribed) || sending || !reply.trim()} onClick={send}>
+                  {sending ? '…' : 'Send'}
                 </Button>
               </div>
             </>
           ) : (
-            <EmptyState title="Select a conversation" text="Your message threads appear in the left panel." />
+            <div className="chat-empty">
+              <EmptyState title="Select a conversation" text="Choose someone from the list, or start a new text." />
+              <Button onClick={() => setComposeOpen(true)}>+ New text</Button>
+            </div>
           )}
         </section>
-
-        <aside className="panel contact-sidebar">
-          <h3>Contact</h3>
-          {active ? (
-            <>
-              <div className="profile-card">
-                <div className="avatar large">{(active.name || active.phone).charAt(0).toUpperCase()}</div>
-                <strong>{active.name || active.phone}</strong>
-                <span>{active.phone}</span>
-              </div>
-              <div className="notes-box">
-                <strong>Consent</strong>
-                <p>{active.is_unsubscribed ? 'Unsubscribed. Sending is blocked.' : active.consent_status || 'Opted in'}</p>
-              </div>
-              <Button variant="ghost" onClick={() => navigator.clipboard?.writeText(active.phone)}>Copy number</Button>
-            </>
-          ) : (
-            <EmptyState title="No contact selected" text="Contact details appear here." />
-          )}
-        </aside>
       </section>
 
       {composeOpen && (
-        <Modal title="New message" onClose={() => setComposeOpen(false)} wide>
-          <DialerWorkspace
-            compact
+        <Modal title="New text" onClose={() => setComposeOpen(false)}>
+          <ComposeForm
+            onCancel={() => setComposeOpen(false)}
             onSent={() => {
               setComposeOpen(false);
               conversations.refresh();

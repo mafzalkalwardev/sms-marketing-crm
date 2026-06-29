@@ -23,8 +23,8 @@ export default function Login() {
       };
       if (mode === 'login') await login({ email: payload.email, password: payload.password });
       else await register(payload);
-    } catch (error) {
-      setError(error.message);
+    } catch (err) {
+      setError(err.message);
     } finally {
       setBusy(false);
     }
@@ -32,29 +32,24 @@ export default function Login() {
 
   return (
     <main className="auth-page">
-      <section className="auth-hero">
+      <section className="auth-card auth-card-centered">
         <Logo />
-        <p className="eyebrow">Business texting platform</p>
-        <h1>Send, receive, and manage business texts from one polished dialer workspace.</h1>
-        <p>SignalMint gives teams a messaging inbox with contacts, business lines, compliance controls, and multi-dialer delivery behind the scenes.</p>
-        <div className="proof-grid">
-          <span>Shared messages inbox</span>
-          <span>Two-way inbox</span>
-          <span>STOP automation</span>
-          <span>Business numbers</span>
-        </div>
-      </section>
-      <section className="auth-card">
+        <h1>Welcome to SignalMint</h1>
+        <p className="auth-lead">Simple business texting — inbox, contacts, and your phone numbers in one place.</p>
+
         <div className="auth-tabs">
-          <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Login</button>
-          <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>Register</button>
+          <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Sign in</button>
+          <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>Create account</button>
         </div>
+
         <form onSubmit={submit} className="stack">
-          {mode === 'register' && <Input label="Name" name="name" required placeholder="Muhammad Afzal" />}
+          {mode === 'register' && <Input label="Your name" name="name" required placeholder="Alex Johnson" />}
           <Input label="Email" name="email" type="email" required placeholder="you@company.com" />
           <Input label="Password" name="password" type="password" required placeholder="At least 6 characters" />
           {error && <div className="alert error">{error}</div>}
-          <Button className="full" disabled={busy}>{busy ? 'Please wait...' : mode === 'login' ? 'Login to workspace' : 'Create workspace'}</Button>
+          <Button className="full" disabled={busy}>
+            {busy ? 'One moment…' : mode === 'login' ? 'Sign in' : 'Create account'}
+          </Button>
         </form>
       </section>
     </main>

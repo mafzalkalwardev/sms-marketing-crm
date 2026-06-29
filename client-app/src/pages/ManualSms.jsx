@@ -1,11 +1,13 @@
 import Topbar from '../components/Topbar';
-import DialerWorkspace from '../components/DialerWorkspace';
+import ComposeForm from '../components/ComposeForm';
 
 export default function ManualSms() {
   return (
     <>
-      <Topbar title="Dialpad" subtitle="Send a business text by number or contact" />
-      <DialerWorkspace />
+      <Topbar title="New text" subtitle="Pick a contact or type a number, then send." />
+      <section className="panel compose-panel">
+        <ComposeForm />
+      </section>
     </>
   );
 }

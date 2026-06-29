@@ -27,7 +27,7 @@ export default function Numbers() {
   };
   return (
     <>
-      <Topbar title="Sender numbers" subtitle="Your business lines" />
+      <Topbar title="My numbers" subtitle="Add the phone numbers you send texts from." />
       <section className="split-layout">
         <form className="panel stack" onSubmit={create}>
           <h3>Add sender number</h3>
