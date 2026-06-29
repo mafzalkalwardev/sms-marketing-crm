@@ -1,0 +1,60 @@
+name: Deploy SignalMint
+
+on:
+  push:
+    branches: [main, vonage-live-sms-integration, signalmint-v3-platform]
+  workflow_dispatch:
+
+jobs:
+  backend-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: signalmint
+          POSTGRES_PASSWORD: signalmint
+          POSTGRES_DB: signalmint
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install server deps
+        working-directory: server
+        run: npm install
+      - name: Seed and smoke test
+        working-directory: server
+        env:
+          DATABASE_URL: postgresql://signalmint:signalmint@localhost:5432/signalmint
+          JWT_SECRET: ci_test_secret_minimum_length
+          MASTER_ENCRYPTION_KEY: ci_master_key_for_tests_only
+          VONAGE_MOCK_MODE: "true"
+        run: |
+          npm run migrate
+          npm run seed
+          npm run dev &
+          sleep 3
+          npm run smoke
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Build React app
+        working-directory: client-app
+        env:
+          REACT_APP_API_URL: https://signalmint-api.onrender.com
+        run: |
+          npm install
+          npm run build

@@ -1,107 +1,61 @@
 # SignalMint
 
-SignalMint is a business texting SaaS MVP for teams that need a Google Voice / OpenPhone-style workspace for SMS conversations, contacts, and business numbers. It uses Node.js, React, SQLite, and Vonage SMS, with safe mock SMS mode for local development.
+White-label business texting platform with an **opaque multi-provider backend**. Customers use the SignalMint dialer UI only — Vonage, Twilio, Telnyx, Bandwidth, Zoom, Google Voice (browser automation), RingoX, and 3CX run behind the scenes under Super Admin control.
 
-The app supports:
+## What's new in v3.1
 
-- JWT authentication
-- Contacts and consent tracking
-- OpenPhone / Google Voice inspired messages workspace
-- Two-way inbox
-- Mock SMS mode for local development
-- Real Vonage sending when credentials are configured
-- STOP/unsubscribe handling
-- Delivery status webhook simulation
-- Sender number management
-- Settings and compliance guidance
+- **PostgreSQL** replaces SQLite (production-ready multi-tenant storage)
+- **Provider router** — outbound SMS routes by sender number to Vonage, Twilio, or mock
+- **Super Admin** role — provider backends, user suspension, platform audit (`/api/super/*`)
+- **Opaque API** — customers never see provider names or backend details in responses
+- **Twilio adapter** — send + inbound/status webhooks with signature verification
+- **Browser automation lane** — Python `automation-worker/` scaffold for Google Voice / advertiser web dialers (DOM/BOM)
+- **Deploy configs** — Render (API + Postgres), Vercel (React frontend), GitHub Actions CI
 
-## Project Structure
+## Architecture
 
 ```text
-server/      Express API, SQLite database, Vonage/mock SMS logic
-client-app/  React SaaS frontend
-AUDIT.md     Audit findings and rebuild plan
-TESTING.md   Automated and manual test steps
+React dialer UI  →  Node API (PostgreSQL)  →  Provider router
+                                              ├─ Vonage / Twilio / Mock (API lane)
+                                              └─ automation-worker (browser lane)
 ```
 
-The old partial `client/` app has been removed. Use `client-app/`.
+## Demo logins (after seed)
 
-## Demo Login
+| Role | Email | Password |
+|------|-------|----------|
+| Super Admin | `super_admin@signalmint.local` | `password123` |
+| Admin | `admin@ftsolutions.local` | `password123` |
+| User | `user1@demo.local` | `password123` |
 
-Run the seed command:
+## Quick start (local)
+
+### 1. PostgreSQL
+
+```powershell
+Set-Location "D:\SMS Marketing App"
+docker compose up -d
+```
+
+### 2. Backend
 
 ```powershell
 Set-Location "D:\SMS Marketing App\server"
-npm run seed
-```
-
-Then log in with:
-
-```text
-admin@ftsolutions.local
-password123
-```
-
-## Backend Setup
-
-```powershell
-Set-Location "D:\SMS Marketing App\server"
-npm install
 Copy-Item .env.example .env
+# Edit .env — set JWT_SECRET, DATABASE_URL
+npm install
 npm run dev
 ```
 
-Required local env:
+Default `DATABASE_URL`:
 
 ```text
-PORT=5000
-JWT_SECRET=replace_with_a_long_secret
+postgresql://signalmint:signalmint@localhost:5432/signalmint
 ```
 
-Mock mode is the default. Use this for local development:
+On first boot the API runs migrations and auto-seeds demo users when `AUTO_SEED=true`.
 
-```text
-VONAGE_MOCK_MODE=true
-VONAGE_API_KEY=your_vonage_api_key
-VONAGE_API_SECRET=your_vonage_api_secret
-VONAGE_SIGNATURE_SECRET=your_vonage_signed_webhook_signature_secret
-VONAGE_DEFAULT_FROM=your_vonage_sender_number_or_sender_id
-PUBLIC_BACKEND_URL=https://your-ngrok-url.ngrok-free.app
-```
-
-When Vonage credentials are missing or `VONAGE_MOCK_MODE=true`, the backend automatically uses mock SMS mode and still saves messages as `sent_mock`.
-
-## Vonage Live SMS Setup
-
-1. Rotate/regenerate the Vonage API secret if it was exposed anywhere.
-2. Copy `.env.example` to `server/.env`.
-3. Set `VONAGE_MOCK_MODE=false`, `VONAGE_API_KEY`, `VONAGE_API_SECRET`, `VONAGE_SIGNATURE_SECRET`, and `VONAGE_DEFAULT_FROM`.
-4. Start the backend.
-5. Start the frontend.
-6. For local webhooks, run:
-
-```powershell
-ngrok http 5000
-```
-
-7. Set Vonage webhooks:
-
-```text
-Inbound: https://your-ngrok-url.ngrok-free.app/webhooks/vonage/inbound
-Status: https://your-ngrok-url.ngrok-free.app/webhooks/vonage/status
-```
-
-8. In Admin Console -> Providers, send a live test SMS.
-9. Confirm delivery/status callbacks update message status.
-
-Security notes:
-
-- Never commit `.env`.
-- Never paste API secrets into prompts, logs, screenshots, or docs.
-- Rotate secrets immediately if exposed.
-- Signed webhook verification should be enabled for live mode.
-
-## Frontend Setup
+### 3. Frontend
 
 ```powershell
 Set-Location "D:\SMS Marketing App\client-app"
@@ -109,67 +63,99 @@ npm install
 npm start
 ```
 
-Open:
+Open http://localhost:3000
 
-```text
-http://localhost:3000
-```
-
-If port 3000 is busy:
-
-```powershell
-$env:PORT=3001
-npm start
-```
-
-## Useful Commands
-
-Backend smoke test:
+### 4. Smoke test
 
 ```powershell
 Set-Location "D:\SMS Marketing App\server"
 npm run smoke
 ```
 
-Frontend build:
+## Environment variables
 
-```powershell
-Set-Location "D:\SMS Marketing App\client-app"
-npm run build
-```
+See `server/.env.example` for full list. Key vars:
 
-Frontend browser smoke test:
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `JWT_SECRET` | Auth tokens |
+| `MASTER_ENCRYPTION_KEY` | Encrypt provider credentials at rest |
+| `VONAGE_MOCK_MODE` | `true` for local mock SMS (default) |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` | Twilio bootstrap |
+| `PUBLIC_BACKEND_URL` | Webhook base URL for providers |
+| `AUTOMATION_WORKER_URL` | Browser lane Python worker |
 
-```powershell
-Set-Location "D:\SMS Marketing App\client-app"
-npx playwright install chromium
-npm run test:e2e
-```
+## Provider webhooks
 
-## Webhooks
-
-Vonage inbound webhook:
+Configure at your provider (Super Admin console shows URLs):
 
 ```text
 POST /webhooks/vonage/inbound
-```
-
-Vonage delivery status webhook:
-
-```text
 POST /webhooks/vonage/status
+POST /webhooks/twilio/inbound
+POST /webhooks/twilio/status
 ```
 
-For local webhook testing, expose the backend with ngrok:
+## Browser automation worker (Lane B)
+
+For Google Voice and advertiser portals without APIs:
 
 ```powershell
-ngrok http 5000
+Set-Location "D:\SMS Marketing App\automation-worker"
+pip install -r requirements.txt
+uvicorn main:app --port 5055
 ```
 
-## Compliance Notes
+Set `AUTOMATION_WORKER_URL=http://localhost:5055` in server `.env`.
 
-- Send only to opted-in contacts.
-- Manual SMS and campaign sends block suppressed/unsubscribed contacts.
-- STOP/UNSUBSCRIBE/REMOVE/CANCEL/END/QUIT/NO replies update the contact and suppression list.
-- US business messaging may require 10DLC registration.
-- UK sender IDs may require approval depending on use case.
+## Deploy live
+
+### Backend + PostgreSQL on Render
+
+1. Push this repo to GitHub
+2. [Render Dashboard](https://dashboard.render.com) → New Blueprint → connect repo
+3. Uses `render.yaml` (API + free Postgres)
+4. Set `VONAGE_*` / `TWILIO_*` in Render env
+
+### Frontend on Vercel
+
+1. Import repo in [Vercel](https://vercel.com)
+2. Root directory: `client-app`
+3. Environment: `REACT_APP_API_URL=https://your-render-api.onrender.com`
+4. Deploy
+
+### GitHub Actions
+
+CI runs on push to `main` / `vonage-live-sms-integration` — Postgres service, migrate, seed, smoke test, frontend build.
+
+## Project structure
+
+```text
+server/              Node API, PostgreSQL, provider adapters
+client-app/          React dialer UI
+automation-worker/   Python browser automation (Lane B)
+PRD.md               Product requirements v3.1
+docker-compose.yml   Local PostgreSQL
+render.yaml          Render deployment
+.github/workflows/   CI pipeline
+```
+
+## Roles
+
+| Role | Can see providers? | Capabilities |
+|------|-------------------|--------------|
+| **User** | No | Inbox, dialpad, contacts, assigned numbers |
+| **Admin** | No | Manage org users, numbers, reports |
+| **Super Admin** | Yes | All providers, suspend anyone, test SMS |
+
+## Compliance
+
+- STOP/unsubscribe auto-detection
+- Suppression list blocks future sends
+- US 10DLC / UK sender rules — configure per provider account
+
+## Docs
+
+- [PRD.md](./PRD.md) — full product spec
+- [TESTING.md](./TESTING.md) — manual + automated tests
