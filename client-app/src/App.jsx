@@ -7,6 +7,7 @@ import Settings from './pages/Settings';
 import Inbox from './pages/Inbox';
 import ManualSms from './pages/ManualSms';
 import AdminConsole from './pages/AdminConsole';
+import SuperAdminConsole from './pages/SuperAdminConsole';
 import Login from './pages/Login';
 import Logo from './components/Logo';
 
@@ -17,21 +18,26 @@ const pages = {
   numbers: Numbers,
   settings: Settings,
   admin: AdminConsole,
+  super: SuperAdminConsole,
 };
 
 export default function App() {
-  const { user, loading } = useAuth();
+  const { user, loading, logout } = useAuth();
   const [page, setPage] = useState('messages');
 
   if (loading) return <div className="auth-loading"><Logo />Loading workspace...</div>;
   if (!user) return <Login />;
 
-  const isAdmin = user.role === 'admin';
-  const Page = page === 'admin' && !isAdmin ? Inbox : (pages[page] || Inbox);
+  const isSuperAdmin = user.role === 'super_admin';
+  const isAdmin = user.role === 'admin' || isSuperAdmin;
+
+  let Page = pages[page] || Inbox;
+  if (page === 'super' && !isSuperAdmin) Page = Inbox;
+  if (page === 'admin' && !isAdmin) Page = Inbox;
 
   return (
     <div className="app-shell">
-      <Sidebar page={page} setPage={setPage} user={user} logout={useAuth().logout} />
+      <Sidebar page={page} setPage={setPage} user={user} logout={logout} />
       <main className="workspace">
         <Page />
       </main>
