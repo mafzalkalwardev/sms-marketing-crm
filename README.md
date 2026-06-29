@@ -47,10 +47,10 @@ npm install
 npm run dev
 ```
 
-Default `DATABASE_URL`:
+Default `DATABASE_URL` (Docker maps host port **5434** to avoid conflicts with other local Postgres):
 
 ```text
-postgresql://signalmint:signalmint@localhost:5432/signalmint
+postgresql://signalmint:signalmint@localhost:5434/signalmint
 ```
 
 On first boot the API runs migrations and auto-seeds demo users when `AUTO_SEED=true`.
@@ -111,7 +111,30 @@ Set `AUTOMATION_WORKER_URL=http://localhost:5055` in server `.env`.
 
 ## Deploy live
 
-### Backend + PostgreSQL on Render
+### Live URLs (production)
+
+| Service | URL |
+|---------|-----|
+| **Frontend** | https://client-app-alpha-livid.vercel.app |
+| **API** | https://signalmint-api.vercel.app |
+| **Health** | https://signalmint-api.vercel.app/api/health |
+
+Demo logins work on production after seed (`AUTO_SEED=true` on first boot).
+
+### Backend + PostgreSQL on Vercel + Neon
+
+The API is deployed as a Vercel serverless Node project (`server/`) with Neon Postgres via the Vercel Marketplace integration.
+
+```powershell
+Set-Location "D:\SMS Marketing App\server"
+vercel link
+vercel integration add neon
+vercel deploy --prod
+```
+
+Required env vars: `JWT_SECRET`, `MASTER_ENCRYPTION_KEY`, `DATABASE_SSL=true`, `VONAGE_MOCK_MODE`, `PUBLIC_BACKEND_URL`.
+
+### Backend + PostgreSQL on Render (alternative)
 
 1. Push this repo to GitHub
 2. [Render Dashboard](https://dashboard.render.com) → New Blueprint → connect repo
@@ -122,7 +145,7 @@ Set `AUTOMATION_WORKER_URL=http://localhost:5055` in server `.env`.
 
 1. Import repo in [Vercel](https://vercel.com)
 2. Root directory: `client-app`
-3. Environment: `REACT_APP_API_URL=https://your-render-api.onrender.com`
+3. Environment: `REACT_APP_API_URL=https://signalmint-api.vercel.app`
 4. Deploy
 
 ### GitHub Actions

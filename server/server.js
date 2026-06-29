@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ override: true });
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
@@ -22,7 +22,34 @@ if (!process.env.JWT_SECRET) {
   process.exit(1);
 }
 
+let bootPromise = null;
+
+function ensureBooted() {
+  if (!bootPromise) {
+    bootPromise = (async () => {
+      await initDatabase();
+      await bootstrapProvidersFromEnv();
+      const { queryOne } = require('./config/database');
+      const existingUser = await queryOne('SELECT id FROM users LIMIT 1');
+      if (!existingUser && process.env.AUTO_SEED !== 'false') {
+        const { seed } = require('./scripts/seed-demo');
+        await seed();
+      }
+    })();
+  }
+  return bootPromise;
+}
+
 const app = express();
+
+app.use(async (req, res, next) => {
+  try {
+    await ensureBooted();
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
 
 app.use(cors());
 app.use(express.json());
@@ -59,18 +86,16 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 async function start() {
-  await initDatabase();
-  await bootstrapProvidersFromEnv();
-  const { queryOne } = require('./config/database');
-  const existingUser = await queryOne('SELECT id FROM users LIMIT 1');
-  if (!existingUser && process.env.AUTO_SEED !== 'false') {
-    const { seed } = require('./scripts/seed-demo');
-    await seed();
-  }
+  await ensureBooted();
   app.listen(PORT, () => console.log(`SignalMint API on port ${PORT} (PostgreSQL)`));
 }
 
-start().catch((err) => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
-});
+module.exports = app;
+module.exports.ensureBooted = ensureBooted;
+
+if (require.main === module) {
+  start().catch((err) => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  });
+}

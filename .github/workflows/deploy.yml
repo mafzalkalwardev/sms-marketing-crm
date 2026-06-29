@@ -54,7 +54,7 @@ jobs:
       - name: Build React app
         working-directory: client-app
         env:
-          REACT_APP_API_URL: https://signalmint-api.onrender.com
+          REACT_APP_API_URL: https://signalmint-api.vercel.app
         run: |
           npm install
           npm run build
