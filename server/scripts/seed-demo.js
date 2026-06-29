@@ -1,15 +1,18 @@
 const bcrypt = require('bcryptjs');
-const { db } = require('../config/database');
-const { findOrCreateContact, findOrCreateConversation } = require('../lib/conversations');
+const { query, queryOne } = require('../config/database');
+const { findOrCreateConversation } = require('../lib/conversations');
 
 const adminEmail = 'admin@ftsolutions.local';
 const adminPassword = 'password123';
+const superAdminEmail = 'super_admin@signalmint.local';
+const superAdminPassword = 'password123';
 const user1Email = 'user1@demo.local';
 const user1Password = 'password123';
 const user2Email = 'user2@demo.local';
 const user2Password = 'password123';
 
 const adminName = 'SignalMint Admin';
+const superAdminName = 'SignalMint Super Admin';
 const userName1 = 'Demo User One';
 const userName2 = 'Demo User Two';
 
@@ -40,68 +43,88 @@ const contactsByUser = {
   ],
 };
 
-function upsertUser(email, password, name, role, status) {
-  const existing = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+async function upsertUser(email, password, name, role, status) {
+  const existing = await queryOne('SELECT * FROM users WHERE email = $1', [email]);
   const hash = bcrypt.hashSync(password, 10);
   if (existing) {
-    db.prepare('UPDATE users SET name = ?, password_hash = ?, role = ?, status = ? WHERE id = ?').run(name, hash, role, status, existing.id);
+    await query(
+      'UPDATE users SET name = $1, password_hash = $2, role = $3, status = $4, updated_at = NOW() WHERE id = $5',
+      [name, hash, role, status, existing.id]
+    );
     return existing.id;
   }
-  return db.prepare('INSERT INTO users (name, email, password_hash, role, status) VALUES (?, ?, ?, ?, ?)').run(name, email, hash, role, status).lastInsertRowid;
+  const result = await query(
+    'INSERT INTO users (name, email, password_hash, role, status) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+    [name, email, hash, role, status]
+  );
+  return result.rows[0].id;
 }
 
-function ensureSubscription(userId, planName) {
-  const existing = db.prepare('SELECT * FROM subscriptions WHERE user_id = ?').get(userId);
+async function ensureSubscription(userId, planName) {
+  const existing = await queryOne('SELECT * FROM subscriptions WHERE user_id = $1', [userId]);
   if (existing) {
-    db.prepare("UPDATE subscriptions SET plan_name = ?, status = ?, updated_at = datetime('now') WHERE id = ?").run(planName, 'active', existing.id);
+    await query(
+      "UPDATE subscriptions SET plan_name = $1, status = 'active', updated_at = NOW() WHERE id = $2",
+      [planName, existing.id]
+    );
   } else {
-    db.prepare("INSERT INTO subscriptions (user_id, plan_name, status, starts_at) VALUES (?, ?, ?, datetime('now'))").run(userId, planName, 'active');
+    await query(
+      "INSERT INTO subscriptions (user_id, plan_name, status, starts_at) VALUES ($1, $2, 'active', NOW())",
+      [userId, planName]
+    );
   }
 }
 
-function seedConversations(userId, contactList) {
-  contactList.forEach((entry) => {
-    let contact = db.prepare('SELECT * FROM contacts WHERE user_id = ? AND phone = ?').get(userId, entry.phone);
+async function seedConversations(userId, contactList) {
+  for (const entry of contactList) {
+    let contact = await queryOne('SELECT * FROM contacts WHERE user_id = $1 AND phone = $2', [userId, entry.phone]);
     if (!contact) {
-      const cid = db.prepare(
-        "INSERT INTO contacts (user_id, name, phone, country, email, tags, consent_status, consent_source, consent_date) VALUES (?, ?, ?, ?, ?, ?, 'opted_in', 'demo', datetime('now'))"
-      ).run(userId, entry.name, entry.phone, entry.country, entry.email, entry.tags).lastInsertRowid;
-      contact = db.prepare('SELECT * FROM contacts WHERE id = ?').get(cid);
+      const result = await query(
+        `INSERT INTO contacts (user_id, name, phone, country, email, tags, consent_status, consent_source, consent_date)
+         VALUES ($1, $2, $3, $4, $5, $6, 'opted_in', 'demo', NOW()) RETURNING *`,
+        [userId, entry.name, entry.phone, entry.country, entry.email, entry.tags]
+      );
+      contact = result.rows[0];
     }
 
-    const conv = findOrCreateConversation({ userId, contactId: contact.id, inbound: true });
+    const conv = await findOrCreateConversation({ userId, contactId: contact.id, inbound: true });
     for (let i = entry.messages.length - 1; i >= 0; i--) {
       const msg = entry.messages[i];
       const isInbound = msg.direction === 'inbound';
       const dir = isInbound ? 'inbound' : 'outbound';
-      db.prepare(
+      const minutesAgo = (entry.messages.length - i) * 15;
+      await query(
         `INSERT INTO messages (user_id, contact_id, conversation_id, direction, to_number, from_number, message_body, provider, status, created_at, sent_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'mock', ?, datetime('now', ?), datetime('now', ?))`
-      ).run(
-        userId, contact.id, conv.id,
-        dir,
-        isInbound ? contact.phone : entry.phone,
-        isInbound ? '+15550009999' : contact.phone,
-        msg.body,
-        'delivered',
-        `-${(entry.messages.length - i) * 15} minutes`,
-        `-${(entry.messages.length - i) * 15} minutes`
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'mock', 'delivered', NOW() - ($8 || ' minutes')::interval, NOW() - ($8 || ' minutes')::interval)`,
+        [
+          userId,
+          contact.id,
+          conv.id,
+          dir,
+          isInbound ? contact.phone : entry.phone,
+          isInbound ? '+15550009999' : contact.phone,
+          msg.body,
+          String(minutesAgo),
+        ]
       );
     }
-  });
+  }
 }
 
-function seed() {
-  const adminId = upsertUser(adminEmail, adminPassword, adminName, 'admin', 'active');
-  const user1Id = upsertUser(user1Email, user1Password, userName1, 'user', 'active');
-  const user2Id = upsertUser(user2Email, user2Password, userName2, 'user', 'active');
+async function seed() {
+  const superAdminId = await upsertUser(superAdminEmail, superAdminPassword, superAdminName, 'super_admin', 'active');
+  const adminId = await upsertUser(adminEmail, adminPassword, adminName, 'admin', 'active');
+  const user1Id = await upsertUser(user1Email, user1Password, userName1, 'user', 'active');
+  const user2Id = await upsertUser(user2Email, user2Password, userName2, 'user', 'active');
 
-  ensureSubscription(adminId, 'enterprise');
-  ensureSubscription(user1Id, 'starter');
-  ensureSubscription(user2Id, 'starter');
-  db.prepare('UPDATE users SET message_limit_monthly = 5000, number_limit = 10 WHERE id = ?').run(adminId);
-  db.prepare('UPDATE users SET message_limit_monthly = 1000, number_limit = 2 WHERE id = ?').run(user1Id);
-  db.prepare('UPDATE users SET message_limit_monthly = 1000, number_limit = 2 WHERE id = ?').run(user2Id);
+  await ensureSubscription(superAdminId, 'enterprise');
+  await ensureSubscription(adminId, 'enterprise');
+  await ensureSubscription(user1Id, 'starter');
+  await ensureSubscription(user2Id, 'starter');
+
+  await query('UPDATE users SET message_limit_monthly = 5000, number_limit = 10 WHERE id = $1', [adminId]);
+  await query('UPDATE users SET message_limit_monthly = 1000, number_limit = 2 WHERE id = $1', [user1Id]);
+  await query('UPDATE users SET message_limit_monthly = 1000, number_limit = 2 WHERE id = $1', [user2Id]);
 
   const numberList = [
     { phone: '+15550109999', label: 'Main line', user: user1Id },
@@ -109,22 +132,32 @@ function seed() {
     { phone: '+15550109988', label: 'Main line', user: user2Id },
     { phone: '+15550109987', label: 'Sales line', user: user2Id },
   ];
-  numberList.forEach((num) => {
-    const existing = db.prepare('SELECT id FROM numbers WHERE user_id = ? AND phone_number = ?').get(num.user, num.phone);
+  for (const num of numberList) {
+    const existing = await queryOne('SELECT id FROM numbers WHERE user_id = $1 AND phone_number = $2', [num.user, num.phone]);
     if (!existing) {
-      db.prepare(
-        'INSERT INTO numbers (user_id, phone_number, country, type, label, provider, status, is_default) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-      ).run(num.user, num.phone, 'US', 'long-code', num.label, 'mock', 'active', num.label.includes('Main') ? 1 : 0);
+      await query(
+        `INSERT INTO numbers (user_id, phone_number, country, type, label, provider, status, is_default)
+         VALUES ($1, $2, 'US', 'long-code', $3, 'mock', 'active', $4)`,
+        [num.user, num.phone, num.label, num.label.includes('Main')]
+      );
     }
-  });
+  }
 
-  seedConversations(user1Id, contactsByUser.user1);
-  seedConversations(user2Id, contactsByUser.user2);
+  await seedConversations(user1Id, contactsByUser.user1);
+  await seedConversations(user2Id, contactsByUser.user2);
 
   console.log(`Seeded demo data.
+  Super Admin: ${superAdminEmail} / ${superAdminPassword}
   Admin: ${adminEmail} / ${adminPassword}
   User1: ${user1Email} / ${user1Password}
   User2: ${user2Email} / ${user2Password}`);
 }
 
-seed();
+if (require.main === module) {
+  seed().catch((err) => {
+    console.error('Seed failed:', err);
+    process.exit(1);
+  });
+}
+
+module.exports = { seed };

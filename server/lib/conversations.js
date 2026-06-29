@@ -1,46 +1,52 @@
-const { db } = require('../config/database');
+const { queryOne, query } = require('../config/database');
 
-function findOrCreateContact({ userId = 1, phone, name = '', country = 'US', workspaceId = 1 }) {
-  let contact = db.prepare('SELECT * FROM contacts WHERE user_id = ? AND phone = ?').get(userId, phone);
+async function findOrCreateContact({ userId = 1, phone, name = '', country = 'US', workspaceId = 1, organizationId = 1 }) {
+  let contact = await queryOne('SELECT * FROM contacts WHERE user_id = $1 AND phone = $2', [userId, phone]);
   if (contact) return contact;
 
-  const result = db.prepare(
-    "INSERT INTO contacts (user_id, workspace_id, name, phone, country, consent_status, consent_source, consent_date) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))"
-  ).run(userId, workspaceId, name || phone, phone, country, 'unknown', 'system');
-
-  return db.prepare('SELECT * FROM contacts WHERE id = ?').get(result.lastInsertRowid);
+  const result = await query(
+    `INSERT INTO contacts (user_id, workspace_id, organization_id, name, phone, country, consent_status, consent_source, consent_date)
+     VALUES ($1, $2, $3, $4, $5, $6, 'unknown', 'system', NOW()) RETURNING *`,
+    [userId, workspaceId, organizationId, name || phone, phone, country]
+  );
+  return result.rows[0];
 }
 
-function getConversation(userId, contactId) {
-  return db.prepare('SELECT * FROM conversations WHERE user_id = ? AND contact_id = ?').get(userId, contactId);
+async function getConversation(userId, contactId) {
+  return queryOne('SELECT * FROM conversations WHERE user_id = $1 AND contact_id = $2', [userId, contactId]);
 }
 
-function findOrCreateConversation({ userId = 1, contactId, inbound = false, workspaceId = 1 }) {
-  let conversation = getConversation(userId, contactId);
+async function findOrCreateConversation({ userId = 1, contactId, inbound = false, workspaceId = 1, organizationId = 1 }) {
+  let conversation = await getConversation(userId, contactId);
   if (!conversation) {
-    const result = db.prepare(
-      "INSERT INTO conversations (user_id, workspace_id, contact_id, status, unread_count, last_message_at) VALUES (?, ?, ?, ?, ?, datetime('now'))"
-    ).run(userId, workspaceId, contactId, 'open', inbound ? 1 : 0);
-    conversation = db.prepare('SELECT * FROM conversations WHERE id = ?').get(result.lastInsertRowid);
-  } else {
-    db.prepare(
-      "UPDATE conversations SET last_message_at = datetime('now'), unread_count = unread_count + ?, updated_at = datetime('now') WHERE id = ?"
-    ).run(inbound ? 1 : 0, conversation.id);
-    conversation = db.prepare('SELECT * FROM conversations WHERE id = ?').get(conversation.id);
+    const result = await query(
+      `INSERT INTO conversations (user_id, workspace_id, organization_id, contact_id, status, unread_count, last_message_at)
+       VALUES ($1, $2, $3, $4, 'open', $5, NOW()) RETURNING *`,
+      [userId, workspaceId, organizationId, contactId, inbound ? 1 : 0]
+    );
+    return result.rows[0];
   }
-  return conversation;
+
+  await query(
+    `UPDATE conversations SET last_message_at = NOW(), unread_count = unread_count + $1, updated_at = NOW() WHERE id = $2`,
+    [inbound ? 1 : 0, conversation.id]
+  );
+  return queryOne('SELECT * FROM conversations WHERE id = $1', [conversation.id]);
 }
 
-function messagePreview(conversationId) {
-  const message = db.prepare(
-    'SELECT message_body, created_at, status FROM messages WHERE conversation_id = ? ORDER BY datetime(created_at) DESC, id DESC LIMIT 1'
-  ).get(conversationId);
-  return message || null;
+async function messagePreview(conversationId) {
+  return queryOne(
+    'SELECT message_body, created_at, status FROM messages WHERE conversation_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1',
+    [conversationId]
+  );
 }
 
-function isSuppressed(userId, phone) {
-  const suppressed = db.prepare('SELECT id FROM suppression_list WHERE user_id = ? AND phone = ?').get(userId, phone);
-  const contact = db.prepare('SELECT id FROM contacts WHERE user_id = ? AND phone = ? AND is_unsubscribed = 1').get(userId, phone);
+async function isSuppressed(userId, phone) {
+  const suppressed = await queryOne('SELECT id FROM suppression_list WHERE user_id = $1 AND phone = $2', [userId, phone]);
+  const contact = await queryOne(
+    'SELECT id FROM contacts WHERE user_id = $1 AND phone = $2 AND is_unsubscribed = TRUE',
+    [userId, phone]
+  );
   return Boolean(suppressed || contact);
 }
 

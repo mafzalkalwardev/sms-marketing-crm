@@ -1,9 +1,9 @@
 const crypto = require('crypto');
 
 function getKey() {
-  const key = process.env.MASTER_ENCRYPTION_KEY;
+  const key = process.env.MASTER_ENCRYPTION_KEY || process.env.JWT_SECRET;
   if (!key) {
-    throw new Error('MASTER_ENCRYPTION_KEY is not set in environment');
+    throw new Error('MASTER_ENCRYPTION_KEY or JWT_SECRET is required for encryption');
   }
   return crypto.scryptSync(key, 'signalmint-salt', 32);
 }

@@ -1,10 +1,11 @@
-const { db } = require('../config/database');
+const { query, queryOne } = require('../config/database');
 const {
   findOrCreateContact,
   findOrCreateConversation,
   isSuppressed,
 } = require('../lib/conversations');
 const vonageProvider = require('./providers/vonageProvider');
+const providerRouter = require('./providers/providerRouter');
 
 function normalizePhone(phone) {
   return vonageProvider.normalizePhone(phone);
@@ -28,20 +29,10 @@ function estimateCost(segments, country = 'US') {
   return Number((segments * (rates[country] || rates.US)).toFixed(4));
 }
 
-function mockSend() {
-  return {
-    ok: true,
-    provider: 'mock',
-    mode: 'mock',
-    providerMessageId: `mock_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    status: 'sent_mock',
-  };
-}
-
 function getProviderStatus() {
   const liveReady = vonageProvider.configuredForLive();
   return {
-    provider: 'vonage',
+    provider: 'internal',
     configured: vonageProvider.isConfigured(),
     mockMode: vonageProvider.isMockMode(),
     mode: liveReady ? 'live' : 'mock',
@@ -50,27 +41,31 @@ function getProviderStatus() {
   };
 }
 
-function defaultSenderForUser(userId) {
-  return db.prepare(
-    "SELECT * FROM numbers WHERE user_id = ? AND status = 'active' ORDER BY is_default DESC, id DESC LIMIT 1"
-  ).get(userId);
+async function defaultSenderForUser(userId) {
+  return queryOne(
+    "SELECT * FROM numbers WHERE user_id = $1 AND status = 'active' ORDER BY is_default DESC, id DESC LIMIT 1",
+    [userId]
+  );
 }
 
-function senderOwnedByUser(userId, phone) {
-  return db.prepare(
-    "SELECT * FROM numbers WHERE user_id = ? AND phone_number = ? AND status = 'active'"
-  ).get(userId, phone);
+async function senderOwnedByUser(userId, phone) {
+  return queryOne(
+    "SELECT * FROM numbers WHERE user_id = $1 AND phone_number = $2 AND status = 'active'",
+    [userId, phone]
+  );
 }
 
-function monthlyMessageCount(userId) {
-  return db.prepare(
-    "SELECT COUNT(*) as n FROM messages WHERE user_id = ? AND direction = 'outbound' AND datetime(created_at) >= datetime('now', 'start of month')"
-  ).get(userId).n;
+async function monthlyMessageCount(userId) {
+  const row = await queryOne(
+    "SELECT COUNT(*)::int AS n FROM messages WHERE user_id = $1 AND direction = 'outbound' AND created_at >= date_trunc('month', NOW())",
+    [userId]
+  );
+  return row?.n || 0;
 }
 
-function assertCanSend({ user, to, from, text, allowEnvSender = false }) {
+async function assertCanSend({ user, to, from, text, allowEnvSender = false }) {
   if (!user || user.status !== 'active') {
-    const error = new Error('Account is inactive or suspended');
+    const error = new Error('Account is temporarily unavailable. Contact support.');
     error.status = 403;
     throw error;
   }
@@ -88,13 +83,13 @@ function assertCanSend({ user, to, from, text, allowEnvSender = false }) {
   }
 
   const limit = Number(user.message_limit_monthly || 0);
-  if (limit > 0 && monthlyMessageCount(user.id) >= limit) {
+  if (limit > 0 && (await monthlyMessageCount(user.id)) >= limit) {
     const error = new Error(`Monthly message limit reached (${limit}).`);
     error.status = 403;
     throw error;
   }
 
-  if (isSuppressed(user.id, to)) {
+  if (await isSuppressed(user.id, to)) {
     const error = new Error('This contact is unsubscribed or suppressed.');
     error.status = 403;
     throw error;
@@ -106,7 +101,7 @@ function assertCanSend({ user, to, from, text, allowEnvSender = false }) {
     throw error;
   }
 
-  if (!allowEnvSender && !senderOwnedByUser(user.id, from)) {
+  if (!allowEnvSender && !(await senderOwnedByUser(user.id, from))) {
     const error = new Error('Sender number is not assigned to this user.');
     error.status = 403;
     throw error;
@@ -121,69 +116,89 @@ async function sendTextMessage({
   contactName = '',
   country = 'US',
   workspaceId = 1,
+  organizationId = 1,
   allowEnvSender = false,
   isTest = false,
 }) {
   const toNorm = normalizePhone(to);
-  const defaultNumber = defaultSenderForUser(user.id);
-  const requestedFrom = normalizePhone(from || defaultNumber?.phone_number || (allowEnvSender ? process.env.VONAGE_DEFAULT_FROM : ''));
+  const defaultNumber = await defaultSenderForUser(user.id);
+  const requestedFrom = normalizePhone(
+    from || defaultNumber?.phone_number || (allowEnvSender ? process.env.VONAGE_DEFAULT_FROM : '')
+  );
   const text = String(message || '').trim();
 
-  assertCanSend({ user, to: toNorm, from: requestedFrom, text, allowEnvSender });
+  await assertCanSend({ user, to: toNorm, from: requestedFrom, text, allowEnvSender });
 
-  const contact = findOrCreateContact({
+  const contact = await findOrCreateContact({
     userId: user.id,
     workspaceId,
+    organizationId: user.organization_id || organizationId,
     phone: toNorm,
     name: contactName || toNorm,
     country,
   });
-  const conversation = findOrCreateConversation({ userId: user.id, workspaceId, contactId: contact.id });
+  const conversation = await findOrCreateConversation({
+    userId: user.id,
+    workspaceId,
+    organizationId: user.organization_id || organizationId,
+    contactId: contact.id,
+  });
   const segments = countSegments(text);
   const cost = estimateCost(segments, contact.country || country);
 
-  const providerResult = vonageProvider.configuredForLive()
-    ? await vonageProvider.sendSms({ to: toNorm, from: requestedFrom, text })
-    : mockSend();
+  const resolved = await providerRouter.resolveForNumber(requestedFrom);
+  const providerResult = await providerRouter.sendViaResolved(resolved, {
+    to: toNorm,
+    from: requestedFrom,
+    text,
+  });
 
   const mode = providerResult.mode || 'mock';
-  const provider = providerResult.provider || (mode === 'mock' ? 'mock' : 'vonage');
-  const status = mode === 'mock' ? 'sent_mock' : (providerResult.ok ? (providerResult.status || 'accepted') : 'failed');
-  const providerMessageId = providerResult.providerMessageId || providerResult.messageId || null;
+  const provider = providerResult.provider || (mode === 'mock' ? 'mock' : resolved.providerKey);
+  const status = mode === 'mock'
+    ? 'sent_mock'
+    : (providerResult.ok ? (providerResult.status || 'accepted') : 'failed');
+  const providerMessageId = providerResult.providerMessageId || null;
   const metadata = JSON.stringify({
     providerMode: mode,
     raw: providerResult.raw || null,
   });
 
-  const insert = db.prepare(
+  const insert = await query(
     `INSERT INTO messages (
-      user_id, workspace_id, contact_id, conversation_id, direction, to_number, from_number,
-      message_body, provider, provider_message_id, status, segments, cost_estimate,
-      error_message, sent_at, is_test, metadata
-    ) VALUES (?, ?, ?, ?, 'outbound', ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, ?)`
-  ).run(
-    user.id,
-    workspaceId,
-    contact.id,
-    conversation.id,
-    toNorm,
-    requestedFrom,
-    text,
-    provider,
-    providerMessageId,
-    status,
-    segments,
-    cost,
-    providerResult.error || null,
-    isTest ? 1 : 0,
-    metadata
+      user_id, workspace_id, organization_id, contact_id, conversation_id, direction, to_number, from_number,
+      message_body, provider, provider_id, provider_message_id, status, segments, cost_estimate,
+      error_message, internal_error_code, sent_at, is_test, metadata
+    ) VALUES ($1,$2,$3,$4,$5,'outbound',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),$17,$18::jsonb)
+    RETURNING *`,
+    [
+      user.id,
+      workspaceId,
+      user.organization_id || organizationId,
+      contact.id,
+      conversation.id,
+      toNorm,
+      requestedFrom,
+      text,
+      provider,
+      resolved.providerId,
+      providerMessageId,
+      status,
+      segments,
+      cost,
+      providerResult.error || null,
+      providerResult.error ? 'send_failed' : null,
+      isTest,
+      metadata,
+    ]
   );
 
-  db.prepare(
-    "UPDATE conversations SET phone = ?, last_message_preview = ?, last_message_at = datetime('now'), updated_at = datetime('now') WHERE id = ?"
-  ).run(toNorm, text.slice(0, 120), conversation.id);
+  await query(
+    'UPDATE conversations SET phone = $1, last_message_preview = $2, last_message_at = NOW(), updated_at = NOW() WHERE id = $3',
+    [toNorm, text.slice(0, 120), conversation.id]
+  );
 
-  const saved = db.prepare('SELECT * FROM messages WHERE id = ?').get(insert.lastInsertRowid);
+  const saved = insert.rows[0];
   return {
     ok: Boolean(providerResult.ok),
     mode,

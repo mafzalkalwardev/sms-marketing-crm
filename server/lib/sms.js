@@ -1,18 +1,12 @@
 const smsService = require('../services/smsService');
 const vonageProvider = require('../services/providers/vonageProvider');
+const providerRouter = require('../services/providers/providerRouter');
 
 async function sendSms({ to, from, text }) {
-  if (!vonageProvider.configuredForLive()) {
-    return {
-      mode: 'mock',
-      messageId: `mock_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      status: 'sent_mock',
-    };
-  }
-
-  const result = await vonageProvider.sendSms({ to, from, text });
+  const resolved = await providerRouter.resolveForNumber(from);
+  const result = await providerRouter.sendViaResolved(resolved, { to, from, text });
   return {
-    mode: result.mode,
+    mode: result.mode || 'mock',
     messageId: result.providerMessageId,
     status: result.status || (result.ok ? 'accepted' : 'failed'),
     error: result.error,

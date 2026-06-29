@@ -1,27 +1,28 @@
 {
   "name": "server",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "version": "3.1.0",
+  "description": "SignalMint API — multi-provider SMS backend",
+  "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "migrate": "node -e \"require('dotenv').config(); require('./config/database').initDatabase().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); })\"",
     "smoke": "node scripts/smoke-test.js",
     "smoke-test": "node scripts/smoke-test.js",
     "seed": "node scripts/seed-demo.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "@vonage/server-sdk": "^3.27.0",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^12.11.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
     "jsonwebtoken": "^9.0.3",
-    "sqlite3": "^6.0.1"
+    "pg": "^8.16.3",
+    "twilio": "^5.8.0"
   }
 }

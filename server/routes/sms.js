@@ -1,6 +1,7 @@
 const express = require('express');
-const { db } = require('../config/database');
+const { queryAll } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
+const { sanitizeSendResult, sanitizeMessages } = require('../lib/sanitize');
 const { normalizePhone, sendTextMessage } = require('../services/smsService');
 
 const router = express.Router();
@@ -21,30 +22,25 @@ router.post('/send', async (req, res, next) => {
       workspaceId,
     });
 
-    res.status(result.ok ? 200 : 502).json({
-      ok: result.ok,
-      mode: result.mode,
-      provider: result.provider,
-      providerMessageId: result.providerMessageId,
-      message: result.message,
-      status: result.status,
-      conversationId: result.conversation.id,
-      error: result.error,
-    });
+    res.status(result.ok ? 200 : 502).json(sanitizeSendResult(result));
   } catch (error) {
     next(error);
   }
 });
 
-router.get('/history/:phone', (req, res) => {
-  const workspaceId = req.user.workspace_id || 1;
-  const phone = normalizePhone(req.params.phone);
-  const rows = db.prepare(
-    `SELECT * FROM messages
-     WHERE user_id = ? AND (to_number = ? OR from_number = ?)
-     ORDER BY datetime(created_at) ASC, id ASC`
-  ).all(req.user.id, phone, phone);
-  res.json(rows);
+router.get('/history/:phone', async (req, res, next) => {
+  try {
+    const phone = normalizePhone(req.params.phone);
+    const rows = await queryAll(
+      `SELECT * FROM messages
+       WHERE user_id = $1 AND (to_number = $2 OR from_number = $2)
+       ORDER BY created_at ASC, id ASC`,
+      [req.user.id, phone]
+    );
+    res.json(sanitizeMessages(rows));
+  } catch (error) {
+    next(error);
+  }
 });
 
 module.exports = router;

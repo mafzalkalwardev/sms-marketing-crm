@@ -1,126 +1,127 @@
 const express = require('express');
-const { db } = require('../config/database');
+const { query, queryOne, queryAll } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
 const { sendTextMessage, normalizePhone, isValidPhone } = require('../services/smsService');
+const { messagePreview } = require('../lib/conversations');
+const { sanitizeSendResult, sanitizeMessages } = require('../lib/sanitize');
 
 const router = express.Router();
 
-function conversationList(userId, isAdmin) {
-  if (isAdmin) {
-    return db.prepare(
-      `SELECT c.*, contacts.name, contacts.phone, contacts.email, contacts.tags, contacts.consent_status, contacts.is_unsubscribed
+async function conversationList(userId, isAdmin) {
+  const sql = isAdmin
+    ? `SELECT c.*, contacts.name, contacts.phone, contacts.email, contacts.tags, contacts.consent_status, contacts.is_unsubscribed
        FROM conversations c
        JOIN contacts ON contacts.id = c.contact_id
-       ORDER BY datetime(c.last_message_at) DESC, c.id DESC`
-    ).all().map((conversation) => ({
-      ...conversation,
-      lastMessage: messagePreviewAdmin(conversation.id),
-    }));
-  }
-  return db.prepare(
-    `SELECT c.*, contacts.name, contacts.phone, contacts.email, contacts.tags, contacts.consent_status, contacts.is_unsubscribed
-     FROM conversations c
-     JOIN contacts ON contacts.id = c.contact_id
-     WHERE c.user_id = ?
-     ORDER BY datetime(c.last_message_at) DESC, c.id DESC`
-  ).all(userId).map((conversation) => ({
+       ORDER BY c.last_message_at DESC NULLS LAST, c.id DESC`
+    : `SELECT c.*, contacts.name, contacts.phone, contacts.email, contacts.tags, contacts.consent_status, contacts.is_unsubscribed
+       FROM conversations c
+       JOIN contacts ON contacts.id = c.contact_id
+       WHERE c.user_id = $1
+       ORDER BY c.last_message_at DESC NULLS LAST, c.id DESC`;
+  const rows = isAdmin ? await queryAll(sql) : await queryAll(sql, [userId]);
+  return Promise.all(rows.map(async (conversation) => ({
     ...conversation,
-    lastMessage: messagePreview(conversation.id),
-  }));
+    lastMessage: await messagePreview(conversation.id),
+  })));
 }
 
-function messagePreview(conversationId) {
-  const message = db.prepare(
-    'SELECT message_body, created_at, status FROM messages WHERE conversation_id = ? ORDER BY datetime(created_at) DESC, id DESC LIMIT 1'
-  ).get(conversationId);
-  return message || null;
-}
-
-function messagePreviewAdmin(conversationId) {
-  const message = db.prepare(
-    'SELECT message_body, created_at, status FROM messages WHERE conversation_id = ? ORDER BY datetime(created_at) DESC, id DESC LIMIT 1'
-  ).get(conversationId);
-  return message || null;
-}
-
-router.get('/', authenticate, (req, res) => {
-  const isAdmin = req.user.role === 'admin';
-  res.json(conversationList(req.user.id, isAdmin));
+router.get('/', authenticate, async (req, res, next) => {
+  try {
+    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
+    res.json(await conversationList(req.user.id, isAdmin));
+  } catch (e) {
+    next(e);
+  }
 });
 
-router.get('/:id', authenticate, (req, res) => {
-  const isAdmin = req.user.role === 'admin';
-  const conversations = conversationList(req.user.id, isAdmin);
-  const conversation = conversations.find((row) => row.id === Number(req.params.id));
-  if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
-  res.json(conversation);
+router.get('/:id', authenticate, async (req, res, next) => {
+  try {
+    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
+    const conversations = await conversationList(req.user.id, isAdmin);
+    const conversation = conversations.find((row) => row.id === Number(req.params.id));
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    res.json(conversation);
+  } catch (e) {
+    next(e);
+  }
 });
 
-router.get('/:id/messages', authenticate, (req, res) => {
-  const isAdmin = req.user.role === 'admin';
-  const conversations = conversationList(req.user.id, isAdmin);
-  const conversation = conversations.find((row) => row.id === Number(req.params.id));
-  if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
-  db.prepare("UPDATE conversations SET unread_count = 0, updated_at = datetime('now') WHERE id = ?").run(conversation.id);
-  res.json(db.prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY datetime(created_at) ASC, id ASC').all(conversation.id));
+router.get('/:id/messages', authenticate, async (req, res, next) => {
+  try {
+    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
+    const conversations = await conversationList(req.user.id, isAdmin);
+    const conversation = conversations.find((row) => row.id === Number(req.params.id));
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    await query('UPDATE conversations SET unread_count = 0, updated_at = NOW() WHERE id = $1', [conversation.id]);
+    const messages = await queryAll(
+      'SELECT * FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC, id ASC',
+      [conversation.id]
+    );
+    res.json(sanitizeMessages(messages));
+  } catch (e) {
+    next(e);
+  }
 });
 
-router.post('/start', authenticate, async (req, res) => {
-  const { to, phone, name, from, from_number, message } = req.body;
-  const phoneNorm = normalizePhone(to || phone);
-  if (!isValidPhone(phoneNorm)) return res.status(400).json({ error: 'Phone must be valid E.164 format' });
+router.post('/start', authenticate, async (req, res, next) => {
+  try {
+    const { to, phone, name, from, from_number, message } = req.body;
+    const phoneNorm = normalizePhone(to || phone);
+    if (!isValidPhone(phoneNorm)) return res.status(400).json({ error: 'Phone must be valid E.164 format' });
 
-  const userId = req.user.id;
-  const workspaceId = 1;
+    const userId = req.user.id;
+    const workspaceId = 1;
 
-  let contact = db.prepare('SELECT * FROM contacts WHERE user_id = ? AND phone = ?').get(userId, phoneNorm);
-  if (!contact) {
-    const result = db.prepare(
-      "INSERT INTO contacts (user_id, workspace_id, name, phone, country, consent_status, consent_source, consent_date) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))"
-    ).run(userId, workspaceId, name || phoneNorm, phoneNorm, 'US', 'unknown', 'manual');
-    contact = db.prepare('SELECT * FROM contacts WHERE id = ?').get(result.lastInsertRowid);
+    let contact = await queryOne('SELECT * FROM contacts WHERE user_id = $1 AND phone = $2', [userId, phoneNorm]);
+    if (!contact) {
+      const result = await query(
+        `INSERT INTO contacts (user_id, workspace_id, name, phone, country, consent_status, consent_source, consent_date)
+         VALUES ($1, $2, $3, $4, $5, 'unknown', 'manual', NOW()) RETURNING *`,
+        [userId, workspaceId, name || phoneNorm, phoneNorm, 'US']
+      );
+      contact = result.rows[0];
+    }
+
+    let conversation = await queryOne(
+      'SELECT * FROM conversations WHERE user_id = $1 AND contact_id = $2',
+      [userId, contact.id]
+    );
+    if (!conversation) {
+      const result = await query(
+        `INSERT INTO conversations (user_id, workspace_id, contact_id, phone, status, unread_count, last_message_at)
+         VALUES ($1, $2, $3, $4, 'open', 0, NOW()) RETURNING *`,
+        [userId, workspaceId, contact.id, phoneNorm]
+      );
+      conversation = result.rows[0];
+    }
+
+    let sendResult = null;
+    if (message && String(message).trim()) {
+      sendResult = await sendTextMessage({
+        user: req.user,
+        to: phoneNorm,
+        from: from || from_number,
+        message,
+        contactName: name,
+        workspaceId,
+      });
+      conversation = await queryOne('SELECT * FROM conversations WHERE id = $1', [sendResult.conversation.id]);
+    }
+
+    if (sendResult) {
+      res.json({ ...sanitizeSendResult(sendResult), conversation, contact });
+    } else {
+      res.json({ ok: true, conversation, conversationId: conversation.id, contact });
+    }
+  } catch (e) {
+    next(e);
   }
-
-  let conversation = db.prepare('SELECT * FROM conversations WHERE user_id = ? AND contact_id = ?').get(userId, contact.id);
-  if (!conversation) {
-    const result = db.prepare(
-      "INSERT INTO conversations (user_id, workspace_id, contact_id, phone, status, unread_count, last_message_at) VALUES (?, ?, ?, ?, 'open', 0, datetime('now'))"
-    ).run(userId, workspaceId, contact.id, phoneNorm);
-    conversation = db.prepare('SELECT * FROM conversations WHERE id = ?').get(result.lastInsertRowid);
-  }
-
-  let savedMessage = null;
-  let sendResult = null;
-  if (message && String(message).trim()) {
-    sendResult = await sendTextMessage({
-      user: req.user,
-      to: phoneNorm,
-      from: from || from_number,
-      message,
-      contactName: name,
-      workspaceId,
-    });
-    savedMessage = sendResult.message;
-    conversation = db.prepare('SELECT * FROM conversations WHERE id = ?').get(sendResult.conversation.id);
-  }
-
-  res.json({
-    ok: sendResult ? sendResult.ok : true,
-    mode: sendResult?.mode || 'mock',
-    provider: sendResult?.provider,
-    providerMessageId: sendResult?.providerMessageId,
-    conversation,
-    conversationId: conversation.id,
-    contact,
-    message: savedMessage,
-    error: sendResult?.error,
-  });
 });
 
 router.post('/:id/messages', authenticate, async (req, res, next) => {
   try {
-    const isAdmin = req.user.role === 'admin';
-    const conversations = conversationList(req.user.id, isAdmin);
+    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
+    const conversations = await conversationList(req.user.id, isAdmin);
     const conversation = conversations.find((row) => row.id === Number(req.params.id));
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
     if (conversation.is_unsubscribed) return res.status(403).json({ error: 'This contact is unsubscribed.' });
@@ -137,14 +138,7 @@ router.post('/:id/messages', authenticate, async (req, res, next) => {
       workspaceId: 1,
     });
 
-    res.status(result.ok ? 200 : 502).json({
-      ok: result.ok,
-      mode: result.mode,
-      provider: result.provider,
-      providerMessageId: result.providerMessageId,
-      message: result.message,
-      error: result.error,
-    });
+    res.status(result.ok ? 200 : 502).json(sanitizeSendResult(result));
   } catch (error) {
     next(error);
   }
