@@ -1,22 +1,43 @@
 import Topbar from '../components/Topbar';
+import ThemeToggle from '../components/ThemeToggle';
+import useWorkspace from '../hooks/useWorkspace';
 
 export default function Settings() {
+  const workspace = useWorkspace();
+
   return (
     <>
-      <Topbar title="Settings" subtitle="Account preferences and notification defaults" />
-      <section className="two-column">
+      <Topbar title="Settings" subtitle="Appearance and messaging preferences" />
+      <section className="settings-stack">
         <article className="panel stack">
-          <h3>Profile</h3>
-          <label className="field"><span>Name</span><input defaultValue="" placeholder="Your name" /></label>
-          <label className="field"><span>Email</span><input defaultValue="" placeholder="you@example.com" /></label>
-          <label className="field"><span>Default assigned line</span><select defaultValue=""><option value="">Use account default</option></select></label>
+          <h3>Appearance</h3>
+          <p className="muted-copy">Choose light, dark, or match your device.</p>
+          <ThemeToggle />
         </article>
+
         <article className="panel stack">
-          <h3>Security and notifications</h3>
-          <label className="field"><span>Current password</span><input type="password" /></label>
-          <label className="field"><span>New password</span><input type="password" /></label>
-          <label className="checkbox"><input type="checkbox" defaultChecked /> Email me when a customer replies</label>
-          <label className="checkbox"><input type="checkbox" defaultChecked /> Show unread conversation badges</label>
+          <h3>Your business lines</h3>
+          <p className="muted-copy">
+            {workspace.data?.hint || 'Assigned numbers work with every platform dialer — Vonage, Twilio, Google Voice, and more.'}
+          </p>
+          {!workspace.data?.lines?.length && (
+            <p className="alert warn">No lines assigned yet. Ask your admin or add one under My numbers.</p>
+          )}
+          {workspace.data?.lines?.map((line) => (
+            <div key={line.id} className="line-row">
+              <div>
+                <strong>{line.label}</strong>
+                <small>{line.phone}</small>
+              </div>
+              {line.isDefault && <span className="badge active">Default</span>}
+            </div>
+          ))}
+        </article>
+
+        <article className="panel stack">
+          <h3>Notifications</h3>
+          <label className="checkbox"><input type="checkbox" defaultChecked /> Show unread badges in inbox</label>
+          <label className="checkbox"><input type="checkbox" defaultChecked /> Play sound on new reply (coming soon)</label>
         </article>
       </section>
     </>

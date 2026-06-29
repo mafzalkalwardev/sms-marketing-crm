@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from './auth/AuthContext';
 import Sidebar from './components/Sidebar';
+import MobileNav from './components/MobileNav';
 import Contacts from './pages/Contacts';
 import Numbers from './pages/Numbers';
 import Settings from './pages/Settings';
@@ -41,6 +42,7 @@ export default function App() {
       <main className="workspace">
         <Page setPage={setPage} />
       </main>
+      <MobileNav page={page} setPage={setPage} />
     </div>
   );
 }

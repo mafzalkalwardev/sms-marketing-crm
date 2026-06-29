@@ -9,9 +9,13 @@ import Modal from '../components/Modal';
 import ComposeForm from '../components/ComposeForm';
 import SaveContactBar from '../components/SaveContactBar';
 import { displayName, isSavedContact } from '../lib/contactUtils';
+import useWorkspace from '../hooks/useWorkspace';
+import LinePicker from '../components/LinePicker';
 
 export default function Inbox({ setPage }) {
+  const workspace = useWorkspace();
   const conversations = useAsync(() => api('/api/conversations'), []);
+  const [replyFrom, setReplyFrom] = useState('');
   const [selected, setSelected] = useState(null);
   const [messages, setMessages] = useState([]);
   const [reply, setReply] = useState('');
@@ -25,6 +29,13 @@ export default function Inbox({ setPage }) {
     `${c.name} ${c.phone}`.toLowerCase().includes(search.toLowerCase())
   ) || [];
   const activeSaved = active ? isSavedContact(active) : true;
+  const lines = workspace.data?.lines || [];
+
+  useEffect(() => {
+    if (workspace.data?.defaultLine && !replyFrom) {
+      setReplyFrom(workspace.data.defaultLine);
+    }
+  }, [workspace.data, replyFrom]);
 
   useEffect(() => {
     if (!active) return;
@@ -37,7 +48,10 @@ export default function Inbox({ setPage }) {
     setSending(true);
     setError('');
     try {
-      const result = await api(`/api/conversations/${active.id}/messages`, { method: 'POST', body: { message: reply } });
+      const result = await api(`/api/conversations/${active.id}/messages`, {
+        method: 'POST',
+        body: { message: reply, from: replyFrom || workspace.data?.defaultLine },
+      });
       setReply('');
       setMessages((current) => [...current, result.message]);
       conversations.refresh();
@@ -61,7 +75,7 @@ export default function Inbox({ setPage }) {
     <>
       <Topbar
         title="Inbox"
-        subtitle="Reply to customers and start new conversations."
+        subtitle={workspace.data?.defaultLine ? `Line ${workspace.data.defaultLine}` : 'Your business texting inbox'}
         action={<Button onClick={() => setComposeOpen(true)}>+ New text</Button>}
       />
 
@@ -141,6 +155,15 @@ export default function Inbox({ setPage }) {
               </div>
 
               <div className="reply-compose">
+                {lines.length > 1 && (
+                  <LinePicker
+                    compact
+                    lines={lines}
+                    value={replyFrom}
+                    onChange={setReplyFrom}
+                  />
+                )}
+                <div className="reply-row">
                 <textarea
                   value={reply}
                   onKeyDown={onReplyKey}
@@ -152,6 +175,7 @@ export default function Inbox({ setPage }) {
                 <Button disabled={Boolean(active.is_unsubscribed) || sending || !reply.trim()} onClick={send}>
                   {sending ? '…' : 'Send'}
                 </Button>
+                </div>
               </div>
             </>
           ) : (

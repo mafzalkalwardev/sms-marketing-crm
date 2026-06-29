@@ -1,4 +1,5 @@
 import Logo from './Logo';
+import ThemeToggle from './ThemeToggle';
 
 const mainNav = [
   { id: 'messages', label: 'Inbox', icon: '◉' },
@@ -36,6 +37,7 @@ export default function Sidebar({ page, setPage, user, logout }) {
     <aside className="sidebar">
       <div className="brand">
         <Logo />
+        <ThemeToggle compact />
       </div>
 
       <nav className="sidebar-nav">

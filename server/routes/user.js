@@ -1,10 +1,36 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { query, queryOne } = require('../config/database');
+const { query, queryOne, queryAll } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
+
+router.get('/workspace', async (req, res, next) => {
+  try {
+    const numbers = await queryAll(
+      `SELECT id, phone_number, label, country, is_default, status
+       FROM numbers WHERE user_id = $1 AND status = 'active'
+       ORDER BY is_default DESC, id DESC`,
+      [req.user.id]
+    );
+    const defaultRow = numbers.find((n) => n.is_default) || numbers[0] || null;
+    res.json({
+      messagingReady: numbers.length > 0,
+      defaultLine: defaultRow?.phone_number || null,
+      lines: numbers.map((n) => ({
+        id: n.id,
+        phone: n.phone_number,
+        label: n.label || n.phone_number,
+        isDefault: Boolean(n.is_default),
+        country: n.country || 'US',
+      })),
+      hint: 'Any assigned business line works — your messages route through the platform dialer automatically.',
+    });
+  } catch (e) {
+    next(e);
+  }
+});
 
 router.get('/profile', async (req, res, next) => {
   try {

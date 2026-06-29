@@ -1,31 +1,29 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import useAsync from '../hooks/useAsync';
+import useWorkspace from '../hooks/useWorkspace';
 import Button from './Button';
 import Dialpad from './Dialpad';
+import LinePicker from './LinePicker';
 import SaveContactBar from './SaveContactBar';
 import { formatStatus } from '../lib/formatStatus';
 import { isSavedContact } from '../lib/contactUtils';
 
 export default function ComposeForm({ initialTo = '', onSent, onCancel, onContactSaved }) {
   const contacts = useAsync(() => api('/api/contacts'), []);
-  const numbers = useAsync(() => api('/api/numbers'), []);
+  const workspace = useWorkspace();
+  const lines = workspace.data?.lines || [];
   const [form, setForm] = useState({ from: '', to: initialTo, message: '', saveName: '' });
   const [showKeypad, setShowKeypad] = useState(false);
   const [status, setStatus] = useState('');
   const [sending, setSending] = useState(false);
   const [pendingSave, setPendingSave] = useState(null);
 
-  const defaultNumber = useMemo(
-    () => numbers.data?.find((n) => n.is_default) || numbers.data?.[0],
-    [numbers.data]
-  );
-
   useEffect(() => {
-    if (defaultNumber && !form.from) {
-      setForm((current) => ({ ...current, from: defaultNumber.phone_number }));
+    if (workspace.data?.defaultLine && !form.from) {
+      setForm((current) => ({ ...current, from: workspace.data.defaultLine }));
     }
-  }, [defaultNumber, form.from]);
+  }, [workspace.data, form.from]);
 
   useEffect(() => {
     if (initialTo) setForm((current) => ({ ...current, to: initialTo }));
@@ -75,21 +73,15 @@ export default function ComposeForm({ initialTo = '', onSent, onCancel, onContac
 
   return (
     <form className="compose-form" onSubmit={send}>
-      {!numbers.data?.length && (
-        <div className="alert warn">Add a phone number under <strong>My numbers</strong> before sending.</div>
+      {!workspace.data?.messagingReady && (
+        <div className="alert warn">Add a business line under <strong>My numbers</strong> to send from any dialer backend.</div>
       )}
 
-      <label className="field">
-        <span>Send from</span>
-        <select value={form.from} onChange={(e) => setForm({ ...form, from: e.target.value })} required>
-          <option value="">Choose your number</option>
-          {numbers.data?.map((n) => (
-            <option key={n.id} value={n.phone_number}>
-              {n.label ? `${n.label} — ` : ''}{n.phone_number}
-            </option>
-          ))}
-        </select>
-      </label>
+      <LinePicker
+        lines={lines}
+        value={form.from}
+        onChange={(from) => setForm({ ...form, from })}
+      />
 
       <label className="field">
         <span>To</span>
