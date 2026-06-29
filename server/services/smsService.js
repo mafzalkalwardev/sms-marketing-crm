@@ -5,6 +5,7 @@ const {
   isSuppressed,
 } = require('../lib/conversations');
 const vonageProvider = require('./providers/vonageProvider');
+const twilioProvider = require('./providers/twilioProvider');
 const providerRouter = require('./providers/providerRouter');
 
 function normalizePhone(phone) {
@@ -30,14 +31,28 @@ function estimateCost(segments, country = 'US') {
 }
 
 function getProviderStatus() {
-  const liveReady = vonageProvider.configuredForLive();
+  const vonageLive = vonageProvider.configuredForLive();
+  const twilioLive = twilioProvider.isConfigured({});
+  const liveReady = Boolean(vonageLive || twilioLive);
+  const sandbox = vonageProvider.isMockMode() && !twilioLive;
+
   return {
     provider: 'internal',
-    configured: vonageProvider.isConfigured(),
-    mockMode: vonageProvider.isMockMode(),
-    mode: liveReady ? 'live' : 'mock',
+    configured: vonageProvider.isConfigured() || twilioLive,
+    mockMode: !liveReady,
+    mode: liveReady ? 'live' : 'sandbox',
+    deliveryMode: liveReady ? 'live' : 'sandbox',
+    liveProviders: [
+      vonageLive ? 'vonage' : null,
+      twilioLive ? 'twilio' : null,
+    ].filter(Boolean),
     signatureSecretConfigured: Boolean(process.env.VONAGE_SIGNATURE_SECRET),
     signedWebhookVerificationActive: Boolean(process.env.VONAGE_SIGNATURE_SECRET) || process.env.NODE_ENV === 'production',
+    sandboxReason: liveReady
+      ? null
+      : (sandbox
+        ? 'Sandbox mode is on (VONAGE_MOCK_MODE=true). Add provider credentials and disable sandbox for real delivery.'
+        : 'No live provider credentials configured yet.'),
   };
 }
 

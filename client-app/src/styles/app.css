@@ -67,7 +67,7 @@ button { cursor: pointer; }
 .field { display: grid; gap: 7px; color: var(--muted); font-size: 13px; font-weight: 800; }
 input, select, textarea { width: 100%; border: 1px solid var(--line); background: white; color: var(--text); border-radius: 8px; padding: 11px 12px; outline: none; }
 textarea { min-height: 120px; resize: vertical; }
-input:focus, select:focus, textarea:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
+input:focus, select:focus, textarea:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(18,49,43,.12); }
 .form-row, .filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .filters { grid-template-columns: 2fr 1fr 1fr 1fr; margin-bottom: 18px; }
 .btn { border: 0; border-radius: 8px; padding: 11px 14px; color: white; background: var(--brand); font-weight: 900; text-align: center; }
@@ -92,8 +92,18 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
 .activity-list div, .campaign-card, .check-list span, .notes-box { padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fbfdff; }
 .activity-list span, .activity-list p, .campaign-card p, .notes-box p { color: var(--muted); margin: 4px 0 0; }
 .campaign-card div { display: flex; justify-content: space-between; gap: 12px; }
-.phone-workspace, .messenger-layout { display: grid; grid-template-columns: 300px minmax(420px, 1fr) 280px; gap: 18px; align-items: stretch; }
-.phone-rail, .contact-sidebar { display: grid; gap: 14px; align-content: start; }
+.phone-workspace, .messenger-layout, .dialer-workspace { display: grid; grid-template-columns: 280px minmax(420px, 1fr) 260px; gap: 18px; align-items: stretch; }
+.dialer-workspace.compact { grid-template-columns: 240px minmax(360px, 1fr); }
+.dialer-rail, .dialer-sidebar, .phone-rail, .contact-sidebar { display: grid; gap: 14px; align-content: start; }
+.dialer-screen, .phone-screen { min-height: 640px; display: grid; grid-template-rows: auto auto minmax(240px, 1fr) auto auto; gap: 14px; background: linear-gradient(180deg,#fff,#f8fbfa); }
+.dialer-header, .phone-header, .chat-header { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.dialer-header-text { flex: 1; min-width: 0; }
+.dialer-header h3, .phone-header h3, .chat-header h3 { margin: 0; font-size: 18px; }
+.dialer-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.muted-copy { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.platform-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; background: linear-gradient(135deg, #f0fdf8, #ffffff); }
+.platform-banner h3 { margin: 6px 0; }
+.platform-banner p { margin: 0; color: var(--muted); max-width: 640px; }
 .line-card { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #f8fbff; }
 .line-card small { display: block; color: var(--muted); margin-top: 3px; }
 .line-dot { width: 12px; height: 12px; border-radius: 999px; background: var(--ok); box-shadow: 0 0 0 5px #dcfce7; }
@@ -101,7 +111,7 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
 .dialpad button { min-height: 58px; border: 1px solid var(--line); border-radius: 8px; background: white; display: grid; place-items: center; }
 .dialpad strong { font-size: 20px; line-height: 1; }
 .dialpad span { color: var(--muted); font-size: 10px; font-weight: 900; }
-.phone-screen { min-height: 700px; display: grid; grid-template-rows: auto auto minmax(280px,1fr) auto auto; gap: 14px; background: linear-gradient(180deg,#fff,#f8fbff); }
+.phone-screen { min-height: 700px; display: grid; grid-template-rows: auto auto minmax(280px,1fr) auto auto; gap: 14px; background: linear-gradient(180deg,#fff,#f8fbfa); }
 .phone-header, .chat-header { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
 .phone-header h3, .chat-header h3 { margin: 0; }
 .phone-header span, .chat-header span { color: var(--muted); }
@@ -123,7 +133,7 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
 .dock-header { display: flex; justify-content: space-between; align-items: center; color: var(--muted); padding: 4px 2px; }
 .dock-header strong { color: var(--text); }
 .conversation-dock button { width: 100%; border: 1px solid transparent; background: white; border-radius: 8px; padding: 12px; text-align: left; display: flex; gap: 10px; }
-.conversation-dock button.active, .conversation-dock button:hover { border-color: #bfdbfe; background: #eff6ff; }
+.conversation-dock button.active, .conversation-dock button:hover { border-color: #9fd9c8; background: #edf9f4; }
 .conversation-dock span, .conversation-dock small { display: block; color: var(--muted); margin-top: 3px; }
 .conversation-dock em { margin-left: auto; min-width: 22px; height: 22px; display: grid; place-items: center; border-radius: 999px; background: var(--brand); color: white; font-style: normal; font-size: 12px; }
 .chat-window { display: grid; grid-template-rows: auto minmax(360px, 1fr) auto; gap: 14px; }
@@ -141,9 +151,10 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
 .admin-stats { margin-top: 18px; }
 .modal-backdrop { position: fixed; inset: 0; background: rgba(16,24,40,.45); display: grid; place-items: center; padding: 20px; z-index: 20; }
 .modal { width: min(620px, 100%); max-height: 90vh; overflow: auto; background: white; border-radius: 8px; padding: 20px; box-shadow: var(--shadow); }
+.modal-wide { width: min(1100px, 96vw); }
 .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .checkbox { display: flex; align-items: center; gap: 8px; color: var(--muted); font-weight: 800; }
 .checkbox input { width: auto; }
 .auth-loading { min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--brand); font-weight: 900; }
-@media (max-width: 1080px) { .auth-page, .app-shell, .two-column, .split-layout, .phone-workspace, .messenger-layout { grid-template-columns: 1fr; } .sidebar { position: static; height: auto; } .sidebar nav { grid-template-columns: repeat(2, minmax(0,1fr)); } .stat-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (max-width: 1080px) { .auth-page, .app-shell, .two-column, .split-layout, .phone-workspace, .messenger-layout, .dialer-workspace { grid-template-columns: 1fr; } .dialer-workspace.compact { grid-template-columns: 1fr; } .sidebar { position: static; height: auto; } .sidebar nav { grid-template-columns: repeat(2, minmax(0,1fr)); } .stat-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
 @media (max-width: 680px) { .workspace { padding: 18px; } .auth-hero { padding: 40px 24px; } .auth-hero h1 { font-size: 36px; } .auth-card { margin: 24px; } .proof-grid, .stat-grid, .form-row, .filters { grid-template-columns: 1fr; } table { font-size: 13px; } }

@@ -121,6 +121,27 @@ Set `AUTOMATION_WORKER_URL=http://localhost:5055` in server `.env`.
 
 Demo logins work on production after seed (`AUTO_SEED=true` on first boot).
 
+### Enable real live SMS (not sandbox)
+
+Production is currently in **sandbox mode** — messages are stored in the app but **not delivered to real phones** until you configure a live provider:
+
+1. Open **Super Admin** → check the **Delivery mode** banner (shows `sandbox` or `live`)
+2. In Vercel project `signalmint-api`, set environment variables:
+   - `VONAGE_API_KEY` and `VONAGE_API_SECRET` (or Twilio `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN`)
+   - `VONAGE_DEFAULT_FROM` = your approved sender number (E.164)
+   - `VONAGE_MOCK_MODE=false` (disables sandbox)
+   - `PUBLIC_BACKEND_URL=https://signalmint-api.vercel.app` (for delivery webhooks)
+3. Redeploy the API, then send a **live test SMS** from Super Admin
+
+Supported dialer backends (Super Admin → Add dialer backend):
+
+| Lane | Dialers |
+|------|---------|
+| **API** | Vonage, Twilio, Telnyx, Bandwidth, Zoom Phone, RingoX, 3CX |
+| **Browser** | Google Voice, Advertiser web dialers (via automation worker) |
+
+Customers never see which backend is used — they only see Sent / Delivered / Failed in the dialer UI.
+
 ### Backend + PostgreSQL on Vercel + Neon
 
 The API is deployed as a Vercel serverless Node project (`server/`) with Neon Postgres via the Vercel Marketplace integration.

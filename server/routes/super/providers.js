@@ -2,6 +2,7 @@ const express = require('express');
 const { query, queryOne, queryAll, withTransaction } = require('../../config/database');
 const { encryptSecret } = require('../../utils/crypto');
 const { getProviderStatus, sendTextMessage, normalizePhone } = require('../../services/smsService');
+const { listCatalog, getCatalogEntry } = require('../../services/providers/providerCatalog');
 
 const router = express.Router();
 
@@ -30,38 +31,57 @@ function vonageStatusPayload() {
   };
 }
 
+router.get('/catalog', (req, res) => {
+  res.json({ catalog: listCatalog() });
+});
+
 router.get('/', async (req, res, next) => {
   try {
     const providers = await queryAll(
-      'SELECT id, provider, label, status, is_default, created_at FROM providers ORDER BY created_at DESC'
+      'SELECT id, provider, label, adapter_type, status, is_default, is_enabled, created_at FROM providers ORDER BY created_at DESC'
     );
-    res.json({ providers, vonage: vonageStatusPayload() });
+    const enriched = providers.map((row) => ({
+      ...row,
+      catalog: getCatalogEntry(row.provider),
+    }));
+    res.json({ providers: enriched, platform: getProviderStatus(), vonage: vonageStatusPayload() });
   } catch (e) {
     next(e);
   }
 });
 
 router.get('/status', (req, res) => {
-  res.json({ vonage: vonageStatusPayload() });
+  res.json({ platform: getProviderStatus(), vonage: vonageStatusPayload() });
 });
 
 router.post('/', async (req, res, next) => {
   try {
-    const { provider, label, api_key, api_secret, extra_config, account_sid } = req.body;
-    if (!provider || !api_key || !api_secret) return res.status(400).json({ error: 'Provider type, API key, and secret are required' });
+    const { provider, label, api_key, api_secret, extra_config, account_sid, adapter_type, base_url } = req.body;
+    const catalog = getCatalogEntry(provider);
+    if (!provider || !catalog) return res.status(400).json({ error: 'Unknown provider type' });
 
-    const extra = account_sid ? JSON.stringify({ accountSid: account_sid }) : (extra_config || '');
-    const encryptedKey = encryptSecret(api_key);
-    const encryptedSecret = encryptSecret(api_secret);
+    const lane = adapter_type || catalog.lane || 'api';
+    if (lane === 'api' && (!api_key || !api_secret) && provider !== 'telnyx') {
+      return res.status(400).json({ error: 'API key and secret are required for API dialers' });
+    }
+    if (lane === 'browser' && !base_url) {
+      return res.status(400).json({ error: 'Base URL is required for browser dialers' });
+    }
+
+    const extra = account_sid
+      ? JSON.stringify({ accountSid: account_sid })
+      : (extra_config || (base_url ? JSON.stringify({ baseUrl: base_url }) : ''));
+    const encryptedKey = api_key ? encryptSecret(api_key) : '';
+    const encryptedSecret = api_secret ? encryptSecret(api_secret) : (api_key && lane === 'browser' ? encryptSecret('browser-profile') : '');
     const encryptedExtra = extra ? encryptSecret(extra) : '';
 
     const providerRecord = await queryOne(
-      `INSERT INTO providers (provider, label, encrypted_api_key, encrypted_api_secret, encrypted_extra_config, status, created_by)
-       VALUES ($1, $2, $3, $4, $5, 'active', $6)
-       RETURNING id, provider, label, status, is_default, created_at`,
-      [provider, label || provider, encryptedKey, encryptedSecret, encryptedExtra, req.user.id]
+      `INSERT INTO providers (provider, label, adapter_type, encrypted_api_key, encrypted_api_secret, encrypted_extra_config, status, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, 'active', $7)
+       RETURNING id, provider, label, adapter_type, status, is_default, is_enabled, created_at`,
+      [provider, label || catalog.label, lane, encryptedKey, encryptedSecret, encryptedExtra, req.user.id]
     );
-    res.json(providerRecord);
+    res.json({ ...providerRecord, catalog });
   } catch (error) {
     next(error);
   }

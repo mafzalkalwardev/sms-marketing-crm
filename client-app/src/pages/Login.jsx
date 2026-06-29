@@ -34,9 +34,9 @@ export default function Login() {
     <main className="auth-page">
       <section className="auth-hero">
         <Logo />
-        <p className="eyebrow">Compliant SMS CRM</p>
-        <h1>Business texting, customer replies, and phone-number management in one workspace.</h1>
-        <p>SignalMint gives small teams a polished messaging inbox with contacts, business lines, mock local sending, and Vonage-ready delivery when credentials are configured.</p>
+        <p className="eyebrow">Business texting platform</p>
+        <h1>Send, receive, and manage business texts from one polished dialer workspace.</h1>
+        <p>SignalMint gives teams a messaging inbox with contacts, business lines, compliance controls, and multi-dialer delivery behind the scenes.</p>
         <div className="proof-grid">
           <span>Shared messages inbox</span>
           <span>Two-way inbox</span>

@@ -1,5 +1,7 @@
 const { queryOne } = require('../../config/database');
 const { decryptSecret } = require('../../utils/crypto');
+const { getCatalogEntry } = require('./providerCatalog');
+const { createGenericProvider } = require('./genericApiProvider');
 const vonageProvider = require('./vonageProvider');
 const twilioProvider = require('./twilioProvider');
 const mockProvider = require('./mockProvider');
@@ -8,6 +10,13 @@ const ADAPTERS = {
   mock: mockProvider,
   vonage: vonageProvider,
   twilio: twilioProvider,
+  telnyx: createGenericProvider('telnyx', 'Telnyx'),
+  bandwidth: createGenericProvider('bandwidth', 'Bandwidth'),
+  zoom: createGenericProvider('zoom', 'Zoom Phone'),
+  ringox: createGenericProvider('ringox', 'RingoX'),
+  '3cx': createGenericProvider('3cx', '3CX'),
+  google_voice: { id: 'google_voice', lane: 'browser', isConfigured: () => true, configuredForLive: () => false },
+  advertiser: { id: 'advertiser', lane: 'browser', isConfigured: () => true, configuredForLive: () => false },
 };
 
 function parseExtraConfig(row) {
@@ -37,10 +46,13 @@ async function resolveCredentials(providerRow) {
       providerKey: 'mock',
       adapter: mockProvider,
       credentials: {},
+      adapterType: 'api',
     };
   }
 
   const providerKey = providerRow.provider;
+  const catalog = getCatalogEntry(providerKey);
+  const adapterType = providerRow.adapter_type || catalog?.lane || 'api';
   const adapter = ADAPTERS[providerKey] || mockProvider;
   let credentials = {};
 
@@ -54,6 +66,15 @@ async function resolveCredentials(providerRow) {
       if (credentials.accountSid) {
         credentials.authToken = credentials.apiSecret;
       }
+    } catch {
+      credentials = {};
+    }
+  } else if (providerRow.encrypted_api_key) {
+    try {
+      credentials = {
+        apiKey: decryptSecret(providerRow.encrypted_api_key),
+        ...parseExtraConfig(providerRow),
+      };
     } catch {
       credentials = {};
     }
@@ -72,7 +93,22 @@ async function resolveCredentials(providerRow) {
     };
   }
 
-  return { providerId: providerRow.id, providerKey, adapter, credentials, adapterType: providerRow.adapter_type || 'api' };
+  return { providerId: providerRow.id, providerKey, adapter, credentials, adapterType };
+}
+
+function pickLiveAdapter() {
+  if (vonageProvider.configuredForLive()) return { providerKey: 'vonage', adapter: vonageProvider, credentials: {} };
+  if (twilioProvider.isConfigured({})) {
+    return {
+      providerKey: 'twilio',
+      adapter: twilioProvider,
+      credentials: {
+        accountSid: process.env.TWILIO_ACCOUNT_SID,
+        authToken: process.env.TWILIO_AUTH_TOKEN,
+      },
+    };
+  }
+  return null;
 }
 
 async function resolveForNumber(fromNumber) {
@@ -87,23 +123,21 @@ async function resolveForNumber(fromNumber) {
   }
 
   if (number?.provider && ADAPTERS[number.provider]) {
-    const envRow = { provider: number.provider, adapter_type: 'api', is_enabled: true, status: 'active' };
+    const envRow = { provider: number.provider, adapter_type: getCatalogEntry(number.provider)?.lane || 'api', is_enabled: true, status: 'active' };
     return resolveCredentials(envRow);
   }
 
   if (number) {
-    if (vonageProvider.configuredForLive()) {
-      return { providerId: null, providerKey: 'vonage', adapter: vonageProvider, credentials: {}, adapterType: 'api' };
-    }
+    const live = pickLiveAdapter();
+    if (live) return { providerId: null, adapterType: 'api', ...live };
     return { providerId: null, providerKey: 'mock', adapter: mockProvider, credentials: {}, adapterType: 'api' };
   }
 
   const defaultRow = await getDefaultProviderRow();
   if (defaultRow) return resolveCredentials(defaultRow);
 
-  if (vonageProvider.configuredForLive()) {
-    return { providerId: null, providerKey: 'vonage', adapter: vonageProvider, credentials: {}, adapterType: 'api' };
-  }
+  const live = pickLiveAdapter();
+  if (live) return { providerId: null, adapterType: 'api', ...live };
 
   return { providerId: null, providerKey: 'mock', adapter: mockProvider, credentials: {}, adapterType: 'api' };
 }
@@ -124,6 +158,13 @@ async function sendViaResolved(resolved, { to, from, text }) {
     return twilioProvider.sendSms({ to, from, text, credentials: resolved.credentials });
   }
 
+  if (resolved.adapter?.sendSms && resolved.providerKey !== 'mock') {
+    if (!resolved.adapter.isConfigured?.(resolved.credentials)) {
+      return mockProvider.sendSms({ to, from, text });
+    }
+    return resolved.adapter.sendSms({ to, from, text, credentials: resolved.credentials });
+  }
+
   return mockProvider.sendSms({ to, from, text });
 }
 
@@ -132,4 +173,5 @@ module.exports = {
   resolveForNumber,
   sendViaResolved,
   getDefaultProviderRow,
+  pickLiveAdapter,
 };

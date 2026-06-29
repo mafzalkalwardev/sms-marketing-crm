@@ -2,17 +2,18 @@ import Logo from './Logo';
 
 const baseItems = [
   ['messages', 'Messages'],
+  ['newText', 'Dialpad'],
   ['contacts', 'Contacts'],
-  ['newText', 'Dialpad / New Text'],
   ['numbers', 'Numbers'],
   ['settings', 'Settings'],
 ];
 
 export default function Sidebar({ page, setPage, user, logout }) {
   const items = [...baseItems];
-  if (user.role === 'admin') items.push(['admin', 'Admin Console']);
+  if (user.role === 'admin' || user.role === 'super_admin') {
+    items.push(['admin', 'Admin']);
+  }
   if (user.role === 'super_admin') {
-    items.push(['admin', 'Admin Console']);
     items.push(['super', 'Super Admin']);
   }
 
@@ -22,12 +23,12 @@ export default function Sidebar({ page, setPage, user, logout }) {
         <Logo />
       </div>
       <div className="line-identity">
-        <span>Business line</span>
+        <span>Workspace</span>
         <strong>SignalMint</strong>
       </div>
       <nav>
         {items.map(([id, label]) => (
-          <button key={id} className={page === id ? 'active' : ''} onClick={() => setPage(id)}>
+          <button key={`${id}-${label}`} type="button" className={page === id ? 'active' : ''} onClick={() => setPage(id)}>
             {label}
           </button>
         ))}
@@ -35,7 +36,7 @@ export default function Sidebar({ page, setPage, user, logout }) {
       <div className="sidebar-footer">
         <span>{user.name}</span>
         <small>{user.email}</small>
-        <button className="btn ghost full" onClick={logout}>Logout</button>
+        <button type="button" className="btn ghost full" onClick={logout}>Logout</button>
       </div>
     </aside>
   );
