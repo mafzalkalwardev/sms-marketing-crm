@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: signalmint
+      POSTGRES_PASSWORD: signalmint
+      POSTGRES_DB: signalmint
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U signalmint"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  automation-worker:
+    build:
+      context: ./automation-worker
+      dockerfile: Dockerfile
+    environment:
+      PORT: 5055
+      WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:-dev_worker_token_change_me}
+      WORKER_SANDBOX_MODE: ${WORKER_SANDBOX_MODE:-true}
+      WORKER_PROFILES_DIR: /data/profiles
+      WORKER_HEADLESS: "true"
+    ports:
+      - "5055:5055"
+    volumes:
+      - worker_profiles:/data/profiles
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5055/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+  worker_profiles:

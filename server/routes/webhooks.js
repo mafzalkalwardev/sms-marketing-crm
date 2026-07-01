@@ -1,42 +1,96 @@
 const express = require('express');
-const { db } = require('../config/database');
+const verifyVonageWebhook = require('../middleware/verifyVonageWebhook');
+const verifyTwilioWebhook = require('../middleware/verifyTwilioWebhook');
+const inboundProcessor = require('../services/inboundProcessor');
+const webhookProcessor = require('../services/webhookProcessor');
 
 const router = express.Router();
-
 router.use(express.json());
 
-router.post('/vonage/inbound', async (req, res) => {
-  const { from, to, text } = req.body;
-  if (!from || !text) return res.status(400).send('Missing fields');
-
-  const stopKeywords = ['STOP', 'UNSUBSCRIBE', 'REMOVE', 'CANCEL', 'END', 'QUIT', 'NO'];
-  const cleanText = text.trim().toUpperCase();
-
-  if (stopKeywords.includes(cleanText) || cleanText.startsWith('STOP')) {
-    db.prepare('INSERT OR IGNORE INTO suppression_list (workspace_id, phone, reason, source) VALUES (1, ?, ?, ?)').run(from, cleanText, 'inbound');
-    db.prepare('UPDATE contacts SET is_unsubscribed = 1, unsubscribed_at = datetime("now") WHERE phone = ?').run(from);
+router.post('/inbound', verifyVonageWebhook, async (req, res, next) => {
+  try {
+    const { status, body } = await inboundProcessor.processInboundWebhook('vonage', req.body, {
+      verified: Boolean(req.webhookVerified?.ok),
+    });
+    res.status(status).json(body);
+  } catch (e) {
+    next(e);
   }
-
-  const contact = db.prepare('SELECT * FROM contacts WHERE phone = ?').get(from);
-  if (!contact) {
-    db.prepare('INSERT INTO contacts (workspace_id, name, phone, is_unsubscribed, consent_status) VALUES (1, ?, ?, ?, ?)').run(from, from, cleanText.startsWith('STOP') || cleanText === 'UNSUBSCRIBE' ? 1 : 0, 'unknown');
-  }
-
-  const contactRow = db.prepare('SELECT * FROM contacts WHERE phone = ?').get(from);
-
-  db.prepare(
-    'INSERT INTO messages (workspace_id, contact_id, direction, to_number, from_number, message_body, status, created_at) VALUES (1, ?, ?, ?, ?, ?, ?, datetime("now"))'
-  ).run(contactRow.id, 'inbound', to, from, text, 'delivered');
-
-  res.status(200).send('OK');
 });
 
-router.post('/vonage/status', async (req, res) => {
-  const { messageId, status } = req.body;
-  if (messageId) {
-    db.prepare('UPDATE messages SET status = ? WHERE provider_message_id = ?').run(status, messageId);
+router.post('/status', verifyVonageWebhook, async (req, res, next) => {
+  try {
+    const result = await webhookProcessor.processStatusWebhook('vonage', req.body, {
+      verified: Boolean(req.webhookVerified?.ok),
+    });
+    res.status(200).json(result);
+  } catch (e) {
+    next(e);
   }
-  res.status(200).send('OK');
 });
 
-module.exports = router;
+function createProviderWebhookHandler(provider, { verified = false } = {}) {
+  return async (req, res, next) => {
+    try {
+      const path = req.path.endsWith('/status') ? 'status' : 'inbound';
+      if (path === 'status') {
+        const result = await webhookProcessor.processStatusWebhook(provider, req.body, { verified });
+        return res.status(200).json(result);
+      }
+      const { status, body } = await inboundProcessor.processInboundWebhook(provider, req.body, { verified });
+      return res.status(status).json(body);
+    } catch (e) {
+      return next(e);
+    }
+  };
+}
+
+async function handlerTwilioInbound(req, res, next) {
+  try {
+    const { status, body } = await inboundProcessor.processInboundWebhook('twilio', req.body, {
+      verified: Boolean(req.webhookVerified?.ok),
+    });
+    res.status(status).json(body);
+  } catch (e) {
+    next(e);
+  }
+}
+
+async function handlerTwilioStatus(req, res, next) {
+  try {
+    const result = await webhookProcessor.processStatusWebhook('twilio', req.body, {
+      verified: Boolean(req.webhookVerified?.ok),
+    });
+    res.status(200).json(result);
+  } catch (e) {
+    next(e);
+  }
+}
+
+async function handlerMockInbound(req, res, next) {
+  try {
+    const { status, body } = await inboundProcessor.processInboundWebhook('mock', req.body, { verified: true });
+    res.status(status).json(body);
+  } catch (e) {
+    next(e);
+  }
+}
+
+async function handlerMockStatus(req, res, next) {
+  try {
+    const result = await webhookProcessor.processStatusWebhook('mock', req.body, { verified: true });
+    res.status(200).json(result);
+  } catch (e) {
+    next(e);
+  }
+}
+
+module.exports = {
+  router,
+  createProviderWebhookHandler,
+  handlerTwilioInbound,
+  handlerTwilioStatus,
+  handlerMockInbound,
+  handlerMockStatus,
+  verifyTwilioWebhook,
+};

@@ -1,132 +1,83 @@
-const Database = require('better-sqlite3');
-const db = new Database('sms_crm.db');
+require('dotenv').config({ override: true });
+const fs = require('fs');
+const path = require('path');
+const { Pool } = require('pg');
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT,
-  email TEXT UNIQUE,
-  password_hash TEXT,
-  role TEXT DEFAULT 'agent',
-  workspace_id INTEGER DEFAULT 1,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
+const connectionString = process.env.DATABASE_URL
+  || 'postgresql://signalmint:signalmint@localhost:5432/signalmint';
 
-CREATE TABLE IF NOT EXISTS workspaces (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  company_name TEXT DEFAULT 'Default Workspace',
-  owner_id INTEGER,
-  status TEXT DEFAULT 'trial',
-  country TEXT DEFAULT 'US',
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
+const pool = new Pool({
+  connectionString,
+  ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+});
 
-CREATE TABLE IF NOT EXISTS contacts (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  workspace_id INTEGER DEFAULT 1,
-  name TEXT,
-  phone TEXT,
-  country TEXT DEFAULT 'US',
-  email TEXT,
-  tags TEXT,
-  consent_status TEXT DEFAULT 'unknown',
-  consent_source TEXT,
-  consent_date TEXT,
-  is_unsubscribed INTEGER DEFAULT 0,
-  unsubscribed_at TEXT,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
+async function query(text, params = []) {
+  return pool.query(text, params);
+}
 
-CREATE TABLE IF NOT EXISTS campaigns (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  workspace_id INTEGER DEFAULT 1,
-  title TEXT,
-  message_template TEXT,
-  status TEXT DEFAULT 'draft',
-  send_rate INTEGER DEFAULT 1,
-  scheduled_at TEXT,
-  created_by INTEGER,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
+async function queryOne(text, params = []) {
+  const result = await query(text, params);
+  return result.rows[0] || null;
+}
 
-CREATE TABLE IF NOT EXISTS messages (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  workspace_id INTEGER DEFAULT 1,
-  campaign_id INTEGER,
-  contact_id INTEGER,
-  direction TEXT DEFAULT 'outbound',
-  to_number TEXT,
-  from_number TEXT,
-  message_body TEXT,
-  provider TEXT DEFAULT 'vonage',
-  provider_message_id TEXT,
-  status TEXT DEFAULT 'queued',
-  segments INTEGER DEFAULT 1,
-  cost_estimate REAL DEFAULT 0,
-  error_message TEXT,
-  sent_at TEXT,
-  delivered_at TEXT,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
+async function queryAll(text, params = []) {
+  const result = await query(text, params);
+  return result.rows;
+}
 
-CREATE TABLE IF NOT EXISTS replies (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  workspace_id INTEGER DEFAULT 1,
-  contact_id INTEGER,
-  from_number TEXT,
-  to_number TEXT,
-  message_body TEXT,
-  provider_message_id TEXT,
-  received_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
+async function withTransaction(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const tx = {
+      query: (text, params) => client.query(text, params),
+      queryOne: async (text, params) => {
+        const r = await client.query(text, params);
+        return r.rows[0] || null;
+      },
+    };
+    const value = await fn(tx);
+    await client.query('COMMIT');
+    return value;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 
-CREATE TABLE IF NOT EXISTS conversations (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  workspace_id INTEGER DEFAULT 1,
-  contact_id INTEGER,
-  assigned_to INTEGER,
-  status TEXT DEFAULT 'open',
-  last_message_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
+async function runMigrations() {
+  const dir = path.join(__dirname, '..', 'migrations');
+  if (!fs.existsSync(dir)) return;
 
-CREATE TABLE IF NOT EXISTS numbers (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  workspace_id INTEGER DEFAULT 1,
-  provider TEXT DEFAULT 'vonage',
-  phone_number TEXT,
-  country TEXT,
-  type TEXT,
-  status TEXT DEFAULT 'active',
-  is_default INTEGER DEFAULT 0,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
+  await query(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      id TEXT PRIMARY KEY,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
 
-CREATE TABLE IF NOT EXISTS suppression_list (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  workspace_id INTEGER DEFAULT 1,
-  phone TEXT UNIQUE,
-  reason TEXT,
-  source TEXT,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
+  for (const file of files) {
+    const applied = await queryOne('SELECT id FROM schema_migrations WHERE id = $1', [file]);
+    if (applied) continue;
+    const sql = fs.readFileSync(path.join(dir, file), 'utf8');
+    await query(sql);
+    await query('INSERT INTO schema_migrations (id) VALUES ($1)', [file]);
+    console.log(`Migration applied: ${file}`);
+  }
+}
 
-CREATE TABLE IF NOT EXISTS webhook_logs (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  workspace_id INTEGER DEFAULT 1,
-  provider TEXT DEFAULT 'vonage',
-  event_type TEXT,
-  payload TEXT,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-`);
+async function initDatabase() {
+  await runMigrations();
+}
 
-module.exports = { db };
+module.exports = {
+  pool,
+  query,
+  queryOne,
+  queryAll,
+  withTransaction,
+  initDatabase,
+};

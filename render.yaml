@@ -1,0 +1,65 @@
+services:
+  - type: web
+    name: signalmint-api
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: JWT_SECRET
+        generateValue: true
+      - key: MASTER_ENCRYPTION_KEY
+        generateValue: true
+      - key: VONAGE_MOCK_MODE
+        value: "true"
+      - key: SMS_SANDBOX_MODE
+        value: "true"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: signalmint-db
+          property: connectionString
+      - key: DATABASE_SSL
+        value: "true"
+      - key: AUTOMATION_WORKER_URL
+        fromService:
+          name: signalmint-worker
+          type: web
+          property: host
+      - key: WORKER_SERVICE_TOKEN
+        generateValue: true
+
+  - type: web
+    name: signalmint-worker
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./automation-worker/Dockerfile
+    dockerContext: ./automation-worker
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 5055
+      - key: WORKER_SERVICE_TOKEN
+        fromService:
+          name: signalmint-api
+          type: web
+          envVarKey: WORKER_SERVICE_TOKEN
+      - key: WORKER_SANDBOX_MODE
+        value: "true"
+      - key: WORKER_PROFILES_DIR
+        value: /data/profiles
+      - key: WORKER_HEADLESS
+        value: "true"
+    disk:
+      name: worker-profiles
+      mountPath: /data/profiles
+      sizeGB: 1
+
+databases:
+  - name: signalmint-db
+    plan: free
+    databaseName: signalmint
+    user: signalmint

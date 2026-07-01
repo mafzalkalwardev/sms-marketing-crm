@@ -1,0 +1,104 @@
+name: Deploy SignalMint
+
+on:
+  push:
+    branches: [main, vonage-live-sms-integration, signalmint-v3-platform]
+  workflow_dispatch:
+
+jobs:
+  backend-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: signalmint
+          POSTGRES_PASSWORD: signalmint
+          POSTGRES_DB: signalmint
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install server deps
+        working-directory: server
+        run: npm install
+      - name: Migrate, seed, and unit tests
+        working-directory: server
+        env:
+          DATABASE_URL: postgresql://signalmint:signalmint@localhost:5432/signalmint
+          JWT_SECRET: ci_test_secret_minimum_length
+          MASTER_ENCRYPTION_KEY: ci_master_key_for_tests_only
+          VONAGE_MOCK_MODE: "true"
+          SMS_SANDBOX_MODE: "true"
+        run: |
+          npm run migrate
+          npm run seed
+          npm run test:dialers:unit
+          npm run test:state
+          npm run test:message-audit
+          npm run test:campaign-queue
+          npm run test:campaign-fanout
+          LOAD_TEST_COUNT=30 LOAD_TEST_CONCURRENCY=3 npm run test:load
+          npm run test:live-readiness
+          npm run test:webhook-replay
+      - name: Start automation worker
+        run: |
+          docker build -t signalmint-worker ./automation-worker
+          docker run -d --name automation-worker -p 5055:5055 \
+            -e WORKER_SERVICE_TOKEN=ci_worker_token_for_tests \
+            -e WORKER_SANDBOX_MODE=true \
+            -e WORKER_HEADLESS=true \
+            signalmint-worker
+          for i in $(seq 1 45); do
+            if curl -sf http://localhost:5055/health > /dev/null; then
+              echo "Worker healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Worker failed to become healthy"
+          docker logs automation-worker
+          exit 1
+      - name: Smoke test with API
+        working-directory: server
+        env:
+          DATABASE_URL: postgresql://signalmint:signalmint@localhost:5432/signalmint
+          JWT_SECRET: ci_test_secret_minimum_length
+          MASTER_ENCRYPTION_KEY: ci_master_key_for_tests_only
+          VONAGE_MOCK_MODE: "true"
+          SMS_SANDBOX_MODE: "true"
+          AUTOMATION_WORKER_URL: http://localhost:5055
+          WORKER_SERVICE_TOKEN: ci_worker_token_for_tests
+        run: |
+          npm run dev &
+          sleep 3
+          npm run smoke
+          npm run test:dialers
+          npm run test:browser
+          npm run test:browser-session
+          npm run test:compliance
+          npm run test:enterprise
+          npm run test:deploy-readiness
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Build React app
+        working-directory: client-app
+        env:
+          REACT_APP_API_URL: https://signalmint-api.vercel.app
+        run: |
+          npm install
+          npm run build

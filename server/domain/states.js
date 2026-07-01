@@ -1,0 +1,168 @@
+const { MESSAGE_STATUSES, CUSTOMER_STATUS_MAP } = require('../services/providers/ProviderAdapter');
+
+const MESSAGE_TERMINAL = new Set([
+  MESSAGE_STATUSES.DELIVERED,
+  MESSAGE_STATUSES.FAILED,
+  MESSAGE_STATUSES.REJECTED,
+  MESSAGE_STATUSES.UNDELIVERABLE,
+  MESSAGE_STATUSES.EXPIRED,
+  MESSAGE_STATUSES.UNSUBSCRIBED,
+  MESSAGE_STATUSES.SENT_MOCK,
+]);
+
+const MESSAGE_TRANSITIONS = {
+  [MESSAGE_STATUSES.QUEUED]: new Set([
+    MESSAGE_STATUSES.SENDING,
+    MESSAGE_STATUSES.ACCEPTED,
+    MESSAGE_STATUSES.SENT,
+    MESSAGE_STATUSES.SENT_MOCK,
+    MESSAGE_STATUSES.FAILED,
+    MESSAGE_STATUSES.REJECTED,
+  ]),
+  [MESSAGE_STATUSES.SENDING]: new Set([
+    MESSAGE_STATUSES.ACCEPTED,
+    MESSAGE_STATUSES.SENT,
+    MESSAGE_STATUSES.SENT_MOCK,
+    MESSAGE_STATUSES.FAILED,
+    MESSAGE_STATUSES.REJECTED,
+    MESSAGE_STATUSES.UNDELIVERABLE,
+  ]),
+  [MESSAGE_STATUSES.ACCEPTED]: new Set([
+    MESSAGE_STATUSES.SENT,
+    MESSAGE_STATUSES.DELIVERED,
+    MESSAGE_STATUSES.FAILED,
+    MESSAGE_STATUSES.REJECTED,
+    MESSAGE_STATUSES.UNDELIVERABLE,
+  ]),
+  [MESSAGE_STATUSES.SENT]: new Set([
+    MESSAGE_STATUSES.DELIVERED,
+    MESSAGE_STATUSES.FAILED,
+    MESSAGE_STATUSES.UNDELIVERABLE,
+  ]),
+  [MESSAGE_STATUSES.UNKNOWN]: new Set([
+    MESSAGE_STATUSES.SENT,
+    MESSAGE_STATUSES.DELIVERED,
+    MESSAGE_STATUSES.FAILED,
+    MESSAGE_STATUSES.UNDELIVERABLE,
+  ]),
+};
+
+const CAMPAIGN_STATUSES = {
+  DRAFT: 'draft',
+  SCHEDULED: 'scheduled',
+  QUEUED: 'queued',
+  SENDING: 'sending',
+  PAUSED: 'paused',
+  COMPLETED: 'completed',
+  CANCELLED: 'cancelled',
+  FAILED: 'failed',
+};
+
+const CAMPAIGN_TERMINAL = new Set([
+  CAMPAIGN_STATUSES.COMPLETED,
+  CAMPAIGN_STATUSES.CANCELLED,
+  CAMPAIGN_STATUSES.FAILED,
+]);
+
+const CAMPAIGN_TRANSITIONS = {
+  [CAMPAIGN_STATUSES.DRAFT]: new Set([
+    CAMPAIGN_STATUSES.SCHEDULED,
+    CAMPAIGN_STATUSES.QUEUED,
+    CAMPAIGN_STATUSES.CANCELLED,
+  ]),
+  [CAMPAIGN_STATUSES.SCHEDULED]: new Set([
+    CAMPAIGN_STATUSES.QUEUED,
+    CAMPAIGN_STATUSES.CANCELLED,
+    CAMPAIGN_STATUSES.DRAFT,
+  ]),
+  [CAMPAIGN_STATUSES.QUEUED]: new Set([
+    CAMPAIGN_STATUSES.SENDING,
+    CAMPAIGN_STATUSES.PAUSED,
+    CAMPAIGN_STATUSES.CANCELLED,
+  ]),
+  [CAMPAIGN_STATUSES.SENDING]: new Set([
+    CAMPAIGN_STATUSES.PAUSED,
+    CAMPAIGN_STATUSES.COMPLETED,
+    CAMPAIGN_STATUSES.FAILED,
+    CAMPAIGN_STATUSES.CANCELLED,
+  ]),
+  [CAMPAIGN_STATUSES.PAUSED]: new Set([
+    CAMPAIGN_STATUSES.QUEUED,
+    CAMPAIGN_STATUSES.SENDING,
+    CAMPAIGN_STATUSES.CANCELLED,
+  ]),
+};
+
+const RECIPIENT_STATUSES = {
+  PENDING: 'pending',
+  QUEUED: 'queued',
+  SENDING: 'sending',
+  SENT: 'sent',
+  DELIVERED: 'delivered',
+  FAILED: 'failed',
+  SKIPPED: 'skipped',
+};
+
+const CONVERSATION_STATUSES = {
+  OPEN: 'open',
+  ARCHIVED: 'archived',
+  CLOSED: 'closed',
+};
+
+const CONVERSATION_TRANSITIONS = {
+  [CONVERSATION_STATUSES.OPEN]: new Set([CONVERSATION_STATUSES.ARCHIVED, CONVERSATION_STATUSES.CLOSED]),
+  [CONVERSATION_STATUSES.ARCHIVED]: new Set([CONVERSATION_STATUSES.OPEN]),
+  [CONVERSATION_STATUSES.CLOSED]: new Set([CONVERSATION_STATUSES.OPEN]),
+};
+
+const PROVIDER_STATUSES = {
+  INACTIVE: 'inactive',
+  ACTIVE: 'active',
+  ERROR: 'error',
+  DISCONNECTED: 'disconnected',
+};
+
+function canTransition(transitions, from, to) {
+  if (!from) return true;
+  if (from === to) return true;
+  const allowed = transitions[from];
+  return Boolean(allowed?.has(to));
+}
+
+function assertTransition(transitions, from, to, entity = 'record') {
+  if (!canTransition(transitions, from, to)) {
+    const error = new Error(`Invalid ${entity} transition: ${from || 'new'} → ${to}`);
+    error.status = 409;
+    throw error;
+  }
+}
+
+function isMessageTerminal(status) {
+  return MESSAGE_TERMINAL.has(status);
+}
+
+function isCampaignTerminal(status) {
+  return CAMPAIGN_TERMINAL.has(status);
+}
+
+function toCustomerStatus(status) {
+  return CUSTOMER_STATUS_MAP[status] || status;
+}
+
+module.exports = {
+  MESSAGE_STATUSES,
+  MESSAGE_TERMINAL,
+  MESSAGE_TRANSITIONS,
+  CAMPAIGN_STATUSES,
+  CAMPAIGN_TERMINAL,
+  CAMPAIGN_TRANSITIONS,
+  RECIPIENT_STATUSES,
+  CONVERSATION_STATUSES,
+  CONVERSATION_TRANSITIONS,
+  PROVIDER_STATUSES,
+  canTransition,
+  assertTransition,
+  isMessageTerminal,
+  isCampaignTerminal,
+  toCustomerStatus,
+};
