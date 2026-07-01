@@ -49,6 +49,24 @@ jobs:
           LOAD_TEST_COUNT=30 LOAD_TEST_CONCURRENCY=3 npm run test:load
           npm run test:live-readiness
           npm run test:webhook-replay
+      - name: Start automation worker
+        run: |
+          docker build -t signalmint-worker ./automation-worker
+          docker run -d --name automation-worker -p 5055:5055 \
+            -e WORKER_SERVICE_TOKEN=ci_worker_token_for_tests \
+            -e WORKER_SANDBOX_MODE=true \
+            -e WORKER_HEADLESS=true \
+            signalmint-worker
+          for i in $(seq 1 45); do
+            if curl -sf http://localhost:5055/health > /dev/null; then
+              echo "Worker healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Worker failed to become healthy"
+          docker logs automation-worker
+          exit 1
       - name: Smoke test with API
         working-directory: server
         env:
@@ -57,6 +75,8 @@ jobs:
           MASTER_ENCRYPTION_KEY: ci_master_key_for_tests_only
           VONAGE_MOCK_MODE: "true"
           SMS_SANDBOX_MODE: "true"
+          AUTOMATION_WORKER_URL: http://localhost:5055
+          WORKER_SERVICE_TOKEN: ci_worker_token_for_tests
         run: |
           npm run dev &
           sleep 3
