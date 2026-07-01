@@ -1,32 +1,41 @@
 const express = require('express');
-const { query, queryOne, queryAll, withTransaction } = require('../config/database');
+const { query, queryOne, queryAll } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
-const { countSegments, estimateCost } = require('../lib/sms');
+const { CAMPAIGN_STATUSES, transitionCampaign, initialCampaignStatus } = require('../services/campaignStateService');
+const {
+  campaignForUser,
+  previewCampaign,
+  getCampaignStats,
+} = require('../services/campaignService');
+const campaignQueue = require('../services/campaignQueue');
 
 const router = express.Router();
 router.use(authenticate);
 
-async function campaignForUser(id, workspaceId) {
-  return queryOne('SELECT * FROM campaigns WHERE id = $1 AND workspace_id = $2', [id, workspaceId]);
+function workspaceContext(req) {
+  return {
+    workspaceId: req.user.workspace_id || 1,
+    isAdmin: req.user.role === 'admin' || req.user.role === 'super_admin',
+  };
 }
 
-async function eligibleContacts(workspaceId) {
-  return queryAll(
-    `SELECT * FROM contacts
-     WHERE workspace_id = $1
-       AND is_unsubscribed = FALSE
-       AND consent_status = 'opted_in'
-       AND phone NOT IN (SELECT phone FROM suppression_list WHERE workspace_id = $1)`,
-    [workspaceId]
-  );
-}
+router.get('/queue/status', async (req, res, next) => {
+  try {
+    res.json(await campaignQueue.getQueueSnapshot());
+  } catch (e) {
+    next(e);
+  }
+});
 
 router.get('/', async (req, res, next) => {
   try {
-    const campaigns = await queryAll(
-      'SELECT * FROM campaigns WHERE workspace_id = $1 ORDER BY created_at DESC, id DESC',
-      [req.user.workspace_id || 1]
-    );
+    const { workspaceId, isAdmin } = workspaceContext(req);
+    const sql = isAdmin
+      ? 'SELECT * FROM campaigns WHERE workspace_id = $1 ORDER BY created_at DESC, id DESC'
+      : 'SELECT * FROM campaigns WHERE workspace_id = $1 AND (user_id = $2 OR created_by = $2) ORDER BY created_at DESC, id DESC';
+    const campaigns = isAdmin
+      ? await queryAll(sql, [workspaceId])
+      : await queryAll(sql, [workspaceId, req.user.id]);
     res.json(campaigns);
   } catch (e) {
     next(e);
@@ -35,14 +44,27 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    const { title, message_template, send_rate, scheduled_at } = req.body;
+    const { workspaceId } = workspaceContext(req);
+    const { title, message_template, send_rate, scheduled_at, from_number } = req.body;
     if (!title || !message_template) return res.status(400).json({ error: 'Campaign title and message are required' });
+    const status = initialCampaignStatus(scheduled_at);
     const result = await query(
-      `INSERT INTO campaigns (workspace_id, title, message_template, send_rate, scheduled_at, created_by, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'draft') RETURNING id`,
-      [req.user.workspace_id || 1, title, message_template, send_rate || 1, scheduled_at || null, req.user.id]
+      `INSERT INTO campaigns (
+        workspace_id, user_id, title, message_template, send_rate, scheduled_at, from_number, created_by, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [
+        workspaceId,
+        req.user.id,
+        title,
+        message_template,
+        send_rate || 1,
+        scheduled_at || null,
+        from_number || null,
+        req.user.id,
+        status,
+      ]
     );
-    res.json({ id: result.rows[0].id });
+    res.status(201).json(result.rows[0]);
   } catch (e) {
     next(e);
   }
@@ -50,9 +72,39 @@ router.post('/', async (req, res, next) => {
 
 router.get('/:id', async (req, res, next) => {
   try {
-    const campaign = await campaignForUser(req.params.id, req.user.workspace_id || 1);
+    const { workspaceId, isAdmin } = workspaceContext(req);
+    const campaign = await campaignForUser(req.params.id, req.user.id, workspaceId, isAdmin);
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
-    res.json(campaign);
+    const stats = await getCampaignStats(campaign.id);
+    res.json({ ...campaign, ...stats });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put('/:id', async (req, res, next) => {
+  try {
+    const { workspaceId, isAdmin } = workspaceContext(req);
+    const campaign = await campaignForUser(req.params.id, req.user.id, workspaceId, isAdmin);
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+    if (![CAMPAIGN_STATUSES.DRAFT, CAMPAIGN_STATUSES.SCHEDULED, CAMPAIGN_STATUSES.PAUSED].includes(campaign.status)) {
+      return res.status(409).json({ error: 'Campaign cannot be edited in its current state' });
+    }
+
+    const { title, message_template, send_rate, scheduled_at, from_number } = req.body;
+    const updated = await queryOne(
+      `UPDATE campaigns
+       SET title = COALESCE($1, title),
+           message_template = COALESCE($2, message_template),
+           send_rate = COALESCE($3, send_rate),
+           scheduled_at = COALESCE($4, scheduled_at),
+           from_number = COALESCE($5, from_number),
+           updated_at = NOW()
+       WHERE id = $6
+       RETURNING *`,
+      [title, message_template, send_rate, scheduled_at, from_number, campaign.id]
+    );
+    res.json(updated);
   } catch (e) {
     next(e);
   }
@@ -60,27 +112,10 @@ router.get('/:id', async (req, res, next) => {
 
 router.post('/:id/preview', async (req, res, next) => {
   try {
-    const workspaceId = req.user.workspace_id || 1;
-    const campaign = await campaignForUser(req.params.id, workspaceId);
+    const { workspaceId, isAdmin } = workspaceContext(req);
+    const campaign = await campaignForUser(req.params.id, req.user.id, workspaceId, isAdmin);
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
-    const contacts = await eligibleContacts(workspaceId);
-    const sample = contacts.slice(0, 5).map((contact) => ({
-      contactId: contact.id,
-      phone: contact.phone,
-      message: campaign.message_template.replaceAll('{{name}}', contact.name || ''),
-    }));
-    const segments = countSegments(campaign.message_template);
-    const excludedRow = await queryOne(
-      'SELECT COUNT(*)::int AS n FROM contacts WHERE workspace_id = $1 AND (is_unsubscribed = TRUE OR consent_status != $2)',
-      [workspaceId, 'opted_in']
-    );
-    res.json({
-      recipients: contacts.length,
-      excluded: excludedRow?.n || 0,
-      segments,
-      estimatedCost: Number((contacts.length * estimateCost(segments)).toFixed(4)),
-      sample,
-    });
+    res.json(await previewCampaign(campaign, req.user.id, workspaceId, isAdmin));
   } catch (e) {
     next(e);
   }
@@ -88,36 +123,39 @@ router.post('/:id/preview', async (req, res, next) => {
 
 router.post('/:id/send', async (req, res, next) => {
   try {
-    const workspaceId = req.user.workspace_id || 1;
-    const campaign = await campaignForUser(req.params.id, workspaceId);
+    const { workspaceId, isAdmin } = workspaceContext(req);
+    const campaign = await campaignForUser(req.params.id, req.user.id, workspaceId, isAdmin);
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
-    const contacts = await eligibleContacts(workspaceId);
-    const segments = countSegments(campaign.message_template);
-
-    await withTransaction(async (tx) => {
-      for (const contact of contacts) {
-        const body = campaign.message_template.replaceAll('{{name}}', contact.name || '');
-        await tx.query(
-          `INSERT INTO messages (
-            workspace_id, campaign_id, contact_id, direction, to_number, message_body,
-            provider, provider_message_id, status, segments, cost_estimate, sent_at
-          ) VALUES ($1, $2, $3, 'outbound', $4, $5, 'mock', $6, 'queued_mock', $7, $8, NOW())`,
-          [
-            workspaceId,
-            campaign.id,
-            contact.id,
-            contact.phone,
-            body,
-            `campaign_mock_${campaign.id}_${contact.id}`,
-            segments,
-            estimateCost(segments, contact.country),
-          ]
-        );
-      }
-      await tx.query("UPDATE campaigns SET status = 'queued', updated_at = NOW() WHERE id = $1", [campaign.id]);
+    if (![CAMPAIGN_STATUSES.DRAFT, CAMPAIGN_STATUSES.SCHEDULED, CAMPAIGN_STATUSES.QUEUED].includes(campaign.status)) {
+      return res.status(409).json({ error: `Cannot send campaign in state: ${campaign.status}` });
+    }
+    if (campaign.status === CAMPAIGN_STATUSES.DRAFT || campaign.status === CAMPAIGN_STATUSES.SCHEDULED) {
+      await transitionCampaign(campaign.id, CAMPAIGN_STATUSES.QUEUED, { source: 'api_enqueue' });
+    }
+    const result = await campaignQueue.enqueueCampaign({
+      campaignId: campaign.id,
+      userId: req.user.id,
+      fromNumber: req.body.from || campaign.from_number,
+      workspaceId,
     });
+    res.status(202).json(result);
+  } catch (e) {
+    next(e);
+  }
+});
 
-    res.json({ ok: true, status: 'queued', queued: contacts.length, mode: 'mock' });
+router.post('/:id/resume', async (req, res, next) => {
+  try {
+    const { workspaceId, isAdmin } = workspaceContext(req);
+    const campaign = await campaignForUser(req.params.id, req.user.id, workspaceId, isAdmin);
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+    const result = await require('../services/campaignService').resumeCampaign({
+      campaign,
+      user: req.user,
+      fromNumber: req.body.from || campaign.from_number,
+      workspaceId,
+    });
+    res.status(202).json(result);
   } catch (e) {
     next(e);
   }
@@ -125,10 +163,29 @@ router.post('/:id/send', async (req, res, next) => {
 
 router.post('/:id/pause', async (req, res, next) => {
   try {
-    const campaign = await campaignForUser(req.params.id, req.user.workspace_id || 1);
+    const { workspaceId, isAdmin } = workspaceContext(req);
+    const campaign = await campaignForUser(req.params.id, req.user.id, workspaceId, isAdmin);
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
-    await query("UPDATE campaigns SET status = 'paused', updated_at = NOW() WHERE id = $1", [campaign.id]);
-    res.json({ ok: true, status: 'paused' });
+    const updated = await transitionCampaign(campaign.id, CAMPAIGN_STATUSES.PAUSED, { source: 'api_pause' });
+    res.json({ ok: true, status: updated.status });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post('/:id/retry-failed', async (req, res, next) => {
+  try {
+    const { workspaceId, isAdmin } = workspaceContext(req);
+    const campaign = await campaignForUser(req.params.id, req.user.id, workspaceId, isAdmin);
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+    const { retryFailedRecipients } = require('../services/campaignService');
+    const result = await retryFailedRecipients({
+      campaignId: campaign.id,
+      userId: req.user.id,
+      workspaceId,
+      fromNumber: req.body.from || campaign.from_number,
+    });
+    res.status(202).json(result);
   } catch (e) {
     next(e);
   }
@@ -136,10 +193,11 @@ router.post('/:id/pause', async (req, res, next) => {
 
 router.post('/:id/cancel', async (req, res, next) => {
   try {
-    const campaign = await campaignForUser(req.params.id, req.user.workspace_id || 1);
+    const { workspaceId, isAdmin } = workspaceContext(req);
+    const campaign = await campaignForUser(req.params.id, req.user.id, workspaceId, isAdmin);
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
-    await query("UPDATE campaigns SET status = 'cancelled', updated_at = NOW() WHERE id = $1", [campaign.id]);
-    res.json({ ok: true, status: 'cancelled' });
+    const updated = await transitionCampaign(campaign.id, CAMPAIGN_STATUSES.CANCELLED, { source: 'api_cancel' });
+    res.json({ ok: true, status: updated.status });
   } catch (e) {
     next(e);
   }

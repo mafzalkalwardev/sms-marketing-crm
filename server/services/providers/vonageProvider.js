@@ -1,19 +1,23 @@
 const { MESSAGE_STATUSES } = require('./ProviderAdapter');
+const { isSandboxMode } = require('./sandbox');
+const mockProvider = require('./mockProvider');
 
 function normalizePhone(phone) {
   return String(phone || '').trim().replace(/[^\d+]/g, '');
 }
 
 function isMockMode() {
-  return String(process.env.VONAGE_MOCK_MODE || 'true').toLowerCase() !== 'false';
+  return isSandboxMode();
 }
 
-function isConfigured() {
-  return Boolean(process.env.VONAGE_API_KEY && process.env.VONAGE_API_SECRET);
+function isConfigured(credentials = {}) {
+  const apiKey = credentials.apiKey || process.env.VONAGE_API_KEY;
+  const apiSecret = credentials.apiSecret || process.env.VONAGE_API_SECRET;
+  return Boolean(apiKey && apiSecret);
 }
 
-function configuredForLive() {
-  return !isMockMode() && isConfigured();
+function configuredForLive(credentials = {}) {
+  return isConfigured(credentials) && !isSandboxMode();
 }
 
 function mapVonageStatus(status) {
@@ -26,13 +30,42 @@ function mapVonageStatus(status) {
   return value || MESSAGE_STATUSES.ACCEPTED;
 }
 
-async function sendSms({ to, from, text }) {
+async function testConnection(credentials = {}) {
+  if (!isConfigured(credentials)) {
+    return { ok: false, mode: 'sandbox', error: 'Missing API key or secret' };
+  }
+  if (isSandboxMode()) {
+    return {
+      ok: true,
+      mode: 'sandbox',
+      connected: true,
+      note: 'Credentials stored; sandbox mode active',
+    };
+  }
   try {
     const sdk = require('@vonage/server-sdk');
     const Vonage = sdk.Vonage || sdk;
     const vonage = new Vonage({
-      apiKey: process.env.VONAGE_API_KEY,
-      apiSecret: process.env.VONAGE_API_SECRET,
+      apiKey: credentials.apiKey || process.env.VONAGE_API_KEY,
+      apiSecret: credentials.apiSecret || process.env.VONAGE_API_SECRET,
+    });
+    const balance = await vonage.account.getBalance();
+    return { ok: true, mode: 'live', connected: true, balance: balance?.value ?? balance };
+  } catch (error) {
+    return { ok: false, mode: 'live', connected: false, error: error.message || 'Vonage connection failed' };
+  }
+}
+
+async function sendSms({ to, from, text, credentials = {} }) {
+  if (!configuredForLive(credentials)) {
+    return mockProvider.sendSms({ to, from, text, provider: 'vonage' });
+  }
+  try {
+    const sdk = require('@vonage/server-sdk');
+    const Vonage = sdk.Vonage || sdk;
+    const vonage = new Vonage({
+      apiKey: credentials.apiKey || process.env.VONAGE_API_KEY,
+      apiSecret: credentials.apiSecret || process.env.VONAGE_API_SECRET,
     });
 
     const response = await vonage.sms.send({ to, from, text });
@@ -71,6 +104,23 @@ async function sendSms({ to, from, text }) {
   }
 }
 
+function normalizeInbound(body) {
+  return {
+    from: normalizePhone(body.from || body.msisdn),
+    to: normalizePhone(body.to),
+    text: body.text || body.message || body.body || '',
+    providerMessageId: body.messageId || body['message-id'] || body.message_uuid || null,
+  };
+}
+
+function normalizeStatus(body) {
+  return {
+    providerMessageId: body.messageId || body['message-id'] || body.message_uuid || null,
+    status: mapVonageStatus(body.status || body.messageStatus || 'unknown'),
+    errorMessage: body.error || body['error-text'] || null,
+  };
+}
+
 function verifySignedWebhook(req) {
   const jwt = require('jsonwebtoken');
   const secret = process.env.VONAGE_SIGNATURE_SECRET;
@@ -96,6 +146,9 @@ module.exports = {
   isConfigured,
   isMockMode,
   mapVonageStatus,
+  testConnection,
   sendSms,
+  normalizeInbound,
+  normalizeStatus,
   verifySignedWebhook,
 };

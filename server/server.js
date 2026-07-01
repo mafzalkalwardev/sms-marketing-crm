@@ -11,11 +11,14 @@ const numberRoutes = require('./routes/numbers');
 const campaignRoutes = require('./routes/campaigns');
 const reportRoutes = require('./routes/reports');
 const inboxRoutes = require('./routes/inbox');
+const messageRoutes = require('./routes/messages');
 const webhookRoutes = require('./routes/webhooks');
 const adminRoutes = require('./routes/admin/index');
 const superRoutes = require('./routes/super/index');
+const internalWorkerRoutes = require('./routes/internal/worker');
 const { initDatabase } = require('./config/database');
 const { bootstrapProvidersFromEnv } = require('./services/providerBootstrap');
+const webhookProcessor = require('./services/webhookProcessor');
 
 if (!process.env.JWT_SECRET) {
   console.error('Missing JWT_SECRET. Set it in server/.env before starting the backend.');
@@ -63,19 +66,42 @@ app.use('/api/user', userRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/inbox', inboxRoutes);
+app.use('/api/messages', messageRoutes);
 app.use('/api/manual-sms', smsRoutes);
 app.use('/api/numbers', numberRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/compliance', require('./routes/compliance'));
+app.use('/api/v1', require('./routes/v1'));
 app.use('/api/admin', adminRoutes);
 app.use('/api/super', superRoutes);
+app.use('/internal/worker', internalWorkerRoutes);
 app.use('/webhooks/vonage', webhookRoutes.router);
 
-app.post('/webhooks/twilio/inbound', webhookRoutes.handlerTwilioInbound);
-app.post('/webhooks/twilio/status', webhookRoutes.handlerTwilioStatus);
+app.post('/webhooks/twilio/inbound', webhookRoutes.verifyTwilioWebhook, webhookRoutes.handlerTwilioInbound);
+app.post('/webhooks/twilio/status', webhookRoutes.verifyTwilioWebhook, webhookRoutes.handlerTwilioStatus);
+app.post('/webhooks/mock/inbound', webhookRoutes.handlerMockInbound);
+app.post('/webhooks/mock/status', webhookRoutes.handlerMockStatus);
 
-app.get('/api/health', (req, res) => {
-  res.json({ ok: true, version: '3.1.0', service: 'signalmint-api' });
+for (const providerId of webhookProcessor.API_WEBHOOK_PROVIDERS) {
+  if (['vonage', 'twilio', 'mock'].includes(providerId)) continue;
+  const handler = webhookRoutes.createProviderWebhookHandler(providerId);
+  app.post(`/webhooks/${providerId}/inbound`, handler);
+  app.post(`/webhooks/${providerId}/status`, handler);
+}
+
+app.get('/api/health', async (req, res) => {
+  try {
+    const { queryOne } = require('./config/database');
+    await queryOne('SELECT 1 AS ok');
+    res.json({
+      ok: true,
+      version: '3.3.0',
+      queue: process.env.REDIS_URL ? 'bullmq' : 'memory',
+    });
+  } catch {
+    res.status(503).json({ ok: false, version: '3.3.0' });
+  }
 });
 
 app.use((err, req, res, next) => {
@@ -87,6 +113,14 @@ const PORT = process.env.PORT || 5000;
 
 async function start() {
   await ensureBooted();
+  const { startBrowserPollScheduler } = require('./services/browserPollScheduler');
+  const { startCampaignQueue } = require('./services/campaignQueue');
+  const { startProviderHealthScheduler } = require('./services/providerHealthScheduler');
+  const { startRetentionScheduler } = require('./services/retentionService');
+  startBrowserPollScheduler();
+  startCampaignQueue();
+  startProviderHealthScheduler();
+  startRetentionScheduler();
   app.listen(PORT, () => console.log(`SignalMint API on port ${PORT} (PostgreSQL)`));
 }
 

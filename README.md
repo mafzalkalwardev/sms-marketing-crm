@@ -2,15 +2,23 @@
 
 White-label business texting platform with an **opaque multi-provider backend**. Customers use the SignalMint dialer UI only — Vonage, Twilio, Telnyx, Bandwidth, Zoom, Google Voice (browser automation), RingoX, and 3CX run behind the scenes under Super Admin control.
 
-## What's new in v3.1
+## What's new in v3.3
 
-- **PostgreSQL** replaces SQLite (production-ready multi-tenant storage)
-- **Provider router** — outbound SMS routes by sender number to Vonage, Twilio, or mock
-- **Super Admin** role — provider backends, user suspension, platform audit (`/api/super/*`)
-- **Opaque API** — customers never see provider names or backend details in responses
-- **Twilio adapter** — send + inbound/status webhooks with signature verification
-- **Browser automation lane** — Python `automation-worker/` scaffold for Google Voice / advertiser web dialers (DOM/BOM)
-- **Deploy configs** — Render (API + Postgres), Vercel (React frontend), GitHub Actions CI
+**Milestone complete** — all 7 roadmap phases shipped in sandbox mode.
+
+- **Phase 6** — BullMQ campaign fan-out, progress UI, dead-letter retry
+- **Phase 7** — Multi-org tenancy, white-label branding, API keys (`/api/v1`), SOC2 audit CSV export, message retention
+- **`npm run test:all`** — runs the full automated verification suite
+- See [.planning/MILESTONE-v3.3-COMPLETE.md](.planning/MILESTONE-v3.3-COMPLETE.md) for the full summary
+
+## What's new in v3.2
+
+- **Phase 4 UX** — Compliance page, reports date filters, mobile inbox, full nav wiring
+- **Phase 5 Ops** — Deploy readiness test, secrets runbook, `RENDER_EXTERNAL_URL` webhook fallback
+- **Full local stack** — `docker compose` runs Postgres + automation-worker together
+- **Render blueprint** — API + worker + Postgres with health checks (`render.yaml`)
+
+Prior v3.1: PostgreSQL, provider router, Super Admin, Twilio, browser lane scaffold, CI.
 
 ## Architecture
 
@@ -30,12 +38,14 @@ React dialer UI  →  Node API (PostgreSQL)  →  Provider router
 
 ## Quick start (local)
 
-### 1. PostgreSQL
+### 1. PostgreSQL + worker (recommended)
 
 ```powershell
 Set-Location "D:\SMS Marketing App"
 docker compose up -d
 ```
+
+Starts Postgres on **5434**, Redis on **6380**, and automation-worker on **5055**.
 
 ### 2. Backend
 
@@ -69,8 +79,11 @@ Open http://localhost:3000
 
 ```powershell
 Set-Location "D:\SMS Marketing App\server"
+npm run test:all
 npm run smoke
 ```
+
+Full test matrix: [TESTING.md](./TESTING.md)
 
 ## Environment variables
 
@@ -155,7 +168,16 @@ vercel deploy --prod
 
 Required env vars: `JWT_SECRET`, `MASTER_ENCRYPTION_KEY`, `DATABASE_SSL=true`, `VONAGE_MOCK_MODE`, `PUBLIC_BACKEND_URL`.
 
-### Backend + PostgreSQL on Render (alternative)
+### Backend + PostgreSQL + worker on Render
+
+1. Push this repo to GitHub
+2. [Render Dashboard](https://dashboard.render.com) → New Blueprint → connect repo
+3. Applies `render.yaml`: `signalmint-api`, `signalmint-worker` (Docker + profile disk), `signalmint-db`
+4. `WORKER_SERVICE_TOKEN` syncs API ↔ worker automatically
+5. `RENDER_EXTERNAL_URL` is used for webhooks when `PUBLIC_BACKEND_URL` is unset
+6. Set `VONAGE_*` / `TWILIO_*` and `SMS_SANDBOX_MODE=false` for live SMS
+
+### Backend + PostgreSQL on Render (API only)
 
 1. Push this repo to GitHub
 2. [Render Dashboard](https://dashboard.render.com) → New Blueprint → connect repo
@@ -203,3 +225,7 @@ render.yaml          Render deployment
 
 - [PRD.md](./PRD.md) — full product spec
 - [TESTING.md](./TESTING.md) — manual + automated tests
+- [AUDIT.md](./AUDIT.md) — platform snapshot (v3.3)
+- [.planning/MODULES.md](./.planning/MODULES.md) — module architecture
+- [.planning/MILESTONE-v3.3-COMPLETE.md](./.planning/MILESTONE-v3.3-COMPLETE.md) — milestone summary
+- [.planning/SECRETS-RUNBOOK.md](./.planning/SECRETS-RUNBOOK.md) — credential rotation

@@ -1,5 +1,6 @@
 import Logo from './Logo';
 import ThemeToggle from './ThemeToggle';
+import useBranding from '../hooks/useBranding';
 
 const mainNav = [
   { id: 'messages', label: 'Inbox', icon: '◉' },
@@ -7,12 +8,20 @@ const mainNav = [
   { id: 'contacts', label: 'Contacts', icon: '◎' },
 ];
 
+const insightsNav = [
+  { id: 'dashboard', label: 'Dashboard', icon: '▤' },
+  { id: 'campaigns', label: 'Campaigns', icon: '▶' },
+  { id: 'reports', label: 'Reports', icon: '▥' },
+];
+
 const manageNav = [
   { id: 'numbers', label: 'My numbers', icon: '☎' },
+  { id: 'compliance', label: 'Compliance', icon: '⚖' },
   { id: 'settings', label: 'Settings', icon: '⚙' },
 ];
 
 export default function Sidebar({ page, setPage, user, logout }) {
+  const branding = useBranding();
   const adminNav = [];
   if (user.role === 'admin' || user.role === 'super_admin') {
     adminNav.push({ id: 'admin', label: 'Team admin', icon: '▣' });
@@ -36,13 +45,16 @@ export default function Sidebar({ page, setPage, user, logout }) {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <Logo />
+        <Logo brandName={branding.data?.brandName || user.branding?.brandName || 'SignalMint'} />
         <ThemeToggle compact />
       </div>
 
       <nav className="sidebar-nav">
         <p className="nav-section">Menu</p>
         {mainNav.map(renderItem)}
+
+        <p className="nav-section">Insights</p>
+        {insightsNav.map(renderItem)}
 
         <p className="nav-section">Manage</p>
         {manageNav.map(renderItem)}

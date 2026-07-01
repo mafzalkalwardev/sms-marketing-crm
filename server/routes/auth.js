@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { query, queryOne } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
+const { enrichUser, getOrgBranding } = require('../services/tenancyService');
 
 const router = express.Router();
 
@@ -13,7 +14,7 @@ router.post('/register', async (req, res, next) => {
     if (String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
     const hash = await bcrypt.hash(password, 10);
     const user = await queryOne(
-      "INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, 'user') RETURNING *",
+      "INSERT INTO users (name, email, password_hash, role, organization_id, workspace_id) VALUES ($1, $2, $3, 'user', 1, 1) RETURNING *",
       [name, email.toLowerCase(), hash]
     );
     await query(
@@ -37,7 +38,9 @@ router.post('/login', async (req, res, next) => {
     if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
     const user = await queryOne('SELECT * FROM users WHERE email = $1', [String(email).toLowerCase()]);
     if (!user || !await bcrypt.compare(password, user.password_hash)) return res.status(401).json({ error: 'Invalid credentials' });
-    if (user.status !== 'active') return res.status(403).json({ error: 'Account is inactive or suspended' });
+    if (user.status !== 'active') {
+      return res.status(403).json({ error: 'Your account is temporarily unavailable. Contact support.' });
+    }
     const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
     res.json({
       token,
@@ -48,15 +51,26 @@ router.post('/login', async (req, res, next) => {
   }
 });
 
-router.get('/me', authenticate, (req, res) => {
-  res.json({
-    id: req.user.id,
-    name: req.user.name,
-    email: req.user.email,
-    role: req.user.role,
-    status: req.user.status,
-    subscription_plan: req.user.subscription_plan,
-  });
+router.get('/me', authenticate, async (req, res, next) => {
+  try {
+    const branding = await getOrgBranding(req.user.organization_id);
+    res.json({
+      id: req.user.id,
+      name: req.user.name,
+      email: req.user.email,
+      role: req.user.role,
+      status: req.user.status,
+      organization_id: req.user.organization_id,
+      workspace_id: req.user.workspace_id,
+      subscription_plan: req.user.subscription_plan,
+      branding: {
+        brandName: branding.brandName,
+        primaryColor: branding.primaryColor,
+      },
+    });
+  } catch (e) {
+    next(e);
+  }
 });
 
 router.put('/profile', authenticate, async (req, res, next) => {

@@ -1,5 +1,7 @@
 const crypto = require('crypto');
 const { MESSAGE_STATUSES } = require('./ProviderAdapter');
+const { isSandboxMode } = require('./sandbox');
+const mockProvider = require('./mockProvider');
 
 function normalizePhone(phone) {
   return String(phone || '').trim().replace(/[^\d+]/g, '');
@@ -19,6 +21,34 @@ function isConfigured(credentials) {
   return Boolean(sid && token);
 }
 
+function configuredForLive(credentials = {}) {
+  return isConfigured(credentials) && !isSandboxMode();
+}
+
+async function testConnection(credentials = {}) {
+  const sid = credentials.accountSid || process.env.TWILIO_ACCOUNT_SID;
+  const token = credentials.authToken || credentials.apiSecret || process.env.TWILIO_AUTH_TOKEN;
+  if (!sid || !token) {
+    return { ok: false, mode: 'sandbox', error: 'Missing account SID or auth token' };
+  }
+  if (isSandboxMode()) {
+    return { ok: true, mode: 'sandbox', connected: true, note: 'Twilio credentials stored; sandbox active' };
+  }
+  try {
+    const client = getClient({ accountSid: sid, authToken: token });
+    const account = await client.api.accounts(sid).fetch();
+    return {
+      ok: true,
+      mode: 'live',
+      connected: true,
+      accountStatus: account.status,
+      friendlyName: account.friendlyName,
+    };
+  } catch (error) {
+    return { ok: false, mode: 'live', connected: false, error: error.message || 'Twilio connection failed' };
+  }
+}
+
 function mapTwilioStatus(status) {
   const value = String(status ?? '').toLowerCase();
   if (['queued', 'accepted', 'sending', 'sent'].includes(value)) return MESSAGE_STATUSES.SENT;
@@ -28,6 +58,9 @@ function mapTwilioStatus(status) {
 }
 
 async function sendSms({ to, from, text, credentials }) {
+  if (!configuredForLive(credentials)) {
+    return mockProvider.sendSms({ to, from, text, provider: 'twilio' });
+  }
   const client = getClient(credentials);
   if (!client) {
     return { ok: false, provider: 'twilio', mode: 'live', error: 'Twilio not configured' };
@@ -87,6 +120,8 @@ module.exports = {
   lane: 'api',
   normalizePhone,
   isConfigured,
+  configuredForLive,
+  testConnection,
   mapTwilioStatus,
   sendSms,
   verifyWebhook,

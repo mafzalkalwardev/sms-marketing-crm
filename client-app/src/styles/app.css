@@ -659,6 +659,66 @@ input:focus, select:focus, textarea:focus {
 .bubble small { display: block; margin-top: 6px; color: var(--muted); font-size: 11px; }
 .message-row.outbound .bubble small { color: rgba(255, 255, 255, 0.75); }
 
+.status-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.message-timeline {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  text-align: left;
+}
+
+.message-timeline-title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+
+.message-timeline ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.message-timeline li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.timeline-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.timeline-dot.failed { background: #ffb4b4; }
+
+.message-timeline li strong { display: block; }
+.message-timeline li small { display: block; opacity: 0.75; }
+
+.message-timeline.loading,
+.message-timeline.error {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
 /* ——— Tables & admin ——— */
 .two-column, .split-layout {
   display: grid;
@@ -852,7 +912,7 @@ th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spa
   .sidebar { display: none; }
   .mobile-nav {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     position: fixed;
     left: 0;
     right: 0;
@@ -876,7 +936,96 @@ th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spa
   .mobile-nav button small { font-size: 10px; font-weight: 600; }
   .mobile-nav button.active { color: var(--brand-dark); }
   .inbox-layout, .two-column, .split-layout { grid-template-columns: 1fr; }
+  .inbox-layout:not(.mobile-chat-open) .chat-panel { display: none; }
+  .inbox-layout.mobile-chat-open .inbox-list { display: none; }
+  .mobile-back-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    background: var(--surface-2);
+    border-radius: var(--radius-sm);
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+    cursor: pointer;
+    margin-right: 4px;
+    flex-shrink: 0;
+  }
+  .chat-header { display: flex; align-items: center; gap: 8px; }
   .chat-panel { min-height: 420px; }
+}
+
+.mobile-back-btn { display: none; }
+
+.reports-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.keyword-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.keyword-grid span {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.check-list {
+  display: grid;
+  gap: 10px;
+}
+
+.check-list span::before {
+  content: '✓ ';
+  color: var(--brand);
+}
+
+.campaign-list {
+  display: grid;
+  gap: 12px;
+}
+
+.campaign-card {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  display: grid;
+  gap: 8px;
+}
+
+.campaign-card .badge {
+  margin-left: 8px;
+  text-transform: capitalize;
+}
+
+.campaign-progress {
+  display: grid;
+  gap: 6px;
+}
+
+.progress-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.progress-bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--brand), var(--brand-dark));
+  transition: width 0.3s ease;
 }
 
 @media (max-width: 600px) {
@@ -884,5 +1033,5 @@ th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spa
   .topbar { flex-direction: column; align-items: flex-start; }
   .reply-row { grid-template-columns: 1fr; }
   .reply-row .btn { width: 100%; }
-  .stat-grid, .form-row, .filters { grid-template-columns: 1fr; }
+  .stat-grid, .form-row, .filters, .reports-filters { grid-template-columns: 1fr; }
 }

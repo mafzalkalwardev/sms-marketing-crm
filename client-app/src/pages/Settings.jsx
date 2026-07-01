@@ -1,8 +1,9 @@
 import Topbar from '../components/Topbar';
 import ThemeToggle from '../components/ThemeToggle';
+import Button from '../components/Button';
 import useWorkspace from '../hooks/useWorkspace';
 
-export default function Settings() {
+export default function Settings({ setPage }) {
   const workspace = useWorkspace();
 
   return (
@@ -18,7 +19,7 @@ export default function Settings() {
         <article className="panel stack">
           <h3>Your business lines</h3>
           <p className="muted-copy">
-            {workspace.data?.hint || 'Assigned numbers work with every platform dialer — Vonage, Twilio, Google Voice, and more.'}
+            {workspace.data?.hint || 'Assigned numbers route through the platform dialer automatically.'}
           </p>
           {!workspace.data?.lines?.length && (
             <p className="alert warn">No lines assigned yet. Ask your admin or add one under My numbers.</p>
@@ -32,6 +33,12 @@ export default function Settings() {
               {line.isDefault && <span className="badge active">Default</span>}
             </div>
           ))}
+        </article>
+
+        <article className="panel stack">
+          <h3>Compliance</h3>
+          <p className="muted-copy">View opt-outs, suppression list, and export STOP audit data.</p>
+          {setPage && <Button variant="ghost" onClick={() => setPage('compliance')}>Open compliance</Button>}
         </article>
 
         <article className="panel stack">

@@ -1,7 +1,11 @@
 node_modules/
 .kilo/
 .env
+.env.*
+!.env.example
+!**/.env.example
 server/.env
+automation-worker/.env
 .env.local
 *.db
 sms_crm.db
@@ -12,3 +16,13 @@ build/
 client-app/build/
 client-app/test-results/
 client-app/playwright-report/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# IDE / OS
+Thumbs.db
+*.log

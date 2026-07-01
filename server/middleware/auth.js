@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { queryOne } = require('../config/database');
+const { enrichUser } = require('../services/tenancyService');
 
 const authenticate = async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
@@ -11,7 +12,7 @@ const authenticate = async (req, res, next) => {
     if (user.status !== 'active') {
       return res.status(403).json({ error: 'Account is temporarily unavailable. Contact support.' });
     }
-    req.user = user;
+    req.user = await enrichUser(user);
     next();
   } catch {
     res.status(401).json({ error: 'Invalid token' });

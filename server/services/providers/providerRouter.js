@@ -1,23 +1,11 @@
 const { queryOne } = require('../../config/database');
 const { decryptSecret } = require('../../utils/crypto');
 const { getCatalogEntry } = require('./providerCatalog');
-const { createGenericProvider } = require('./genericApiProvider');
+const { ADAPTERS } = require('./providerRegistry');
 const vonageProvider = require('./vonageProvider');
 const twilioProvider = require('./twilioProvider');
 const mockProvider = require('./mockProvider');
-
-const ADAPTERS = {
-  mock: mockProvider,
-  vonage: vonageProvider,
-  twilio: twilioProvider,
-  telnyx: createGenericProvider('telnyx', 'Telnyx'),
-  bandwidth: createGenericProvider('bandwidth', 'Bandwidth'),
-  zoom: createGenericProvider('zoom', 'Zoom Phone'),
-  ringox: createGenericProvider('ringox', 'RingoX'),
-  '3cx': createGenericProvider('3cx', '3CX'),
-  google_voice: { id: 'google_voice', lane: 'browser', isConfigured: () => true, configuredForLive: () => false },
-  advertiser: { id: 'advertiser', lane: 'browser', isConfigured: () => true, configuredForLive: () => false },
-};
+const { shouldUseMockSend } = require('./sandbox');
 
 function parseExtraConfig(row) {
   if (!row?.encrypted_extra_config) return {};
@@ -64,7 +52,7 @@ async function resolveCredentials(providerRow) {
         ...parseExtraConfig(providerRow),
       };
       if (credentials.accountSid) {
-        credentials.authToken = credentials.apiSecret;
+        credentials.authToken = credentials.apiSecret || credentials.apiKey;
       }
     } catch {
       credentials = {};
@@ -78,6 +66,8 @@ async function resolveCredentials(providerRow) {
     } catch {
       credentials = {};
     }
+  } else {
+    credentials = { ...parseExtraConfig(providerRow) };
   }
 
   if (providerKey === 'vonage' && !credentials.apiKey) {
@@ -111,6 +101,16 @@ function pickLiveAdapter() {
   return null;
 }
 
+async function resolveForProviderId(providerId) {
+  const row = await getProviderRow(providerId);
+  if (!row) {
+    const error = new Error('Provider not found');
+    error.status = 404;
+    throw error;
+  }
+  return resolveCredentials(row);
+}
+
 async function resolveForNumber(fromNumber) {
   const number = await queryOne(
     "SELECT * FROM numbers WHERE phone_number = $1 AND status = 'active' ORDER BY is_default DESC, id DESC LIMIT 1",
@@ -123,7 +123,12 @@ async function resolveForNumber(fromNumber) {
   }
 
   if (number?.provider && ADAPTERS[number.provider]) {
-    const envRow = { provider: number.provider, adapter_type: getCatalogEntry(number.provider)?.lane || 'api', is_enabled: true, status: 'active' };
+    const envRow = {
+      provider: number.provider,
+      adapter_type: getCatalogEntry(number.provider)?.lane || 'api',
+      is_enabled: true,
+      status: 'active',
+    };
     return resolveCredentials(envRow);
   }
 
@@ -143,34 +148,34 @@ async function resolveForNumber(fromNumber) {
 }
 
 async function sendViaResolved(resolved, { to, from, text }) {
+  if (shouldUseMockSend(resolved)) {
+    const mock = await mockProvider.sendSms({ to, from, text, provider: resolved.providerKey });
+    return mock;
+  }
+
   if (resolved.adapterType === 'browser') {
     const browserLane = require('./browserLaneDispatcher');
-    return browserLane.sendViaBrowser({ profileId: resolved.providerId, to, text });
+    return browserLane.sendViaBrowser({
+      providerId: resolved.providerId,
+      to,
+      text,
+    });
   }
 
-  if (resolved.providerKey === 'vonage') {
-    if (!vonageProvider.configuredForLive()) return mockProvider.sendSms({ to, from, text });
-    return vonageProvider.sendSms({ to, from, text });
-  }
-
-  if (resolved.providerKey === 'twilio') {
-    if (!twilioProvider.isConfigured(resolved.credentials)) return mockProvider.sendSms({ to, from, text });
-    return twilioProvider.sendSms({ to, from, text, credentials: resolved.credentials });
-  }
-
-  if (resolved.adapter?.sendSms && resolved.providerKey !== 'mock') {
-    if (!resolved.adapter.isConfigured?.(resolved.credentials)) {
-      return mockProvider.sendSms({ to, from, text });
-    }
-    return resolved.adapter.sendSms({ to, from, text, credentials: resolved.credentials });
-  }
-
-  return mockProvider.sendSms({ to, from, text });
+  return resolved.adapter.sendSms({
+    to,
+    from,
+    text,
+    credentials: resolved.credentials,
+  });
 }
 
 module.exports = {
   ADAPTERS,
   resolveForNumber,
+  resolveForProviderId,
+  resolveCredentials,
+  getProviderRow,
   sendViaResolved,
   getDefaultProviderRow,
   pickLiveAdapter,

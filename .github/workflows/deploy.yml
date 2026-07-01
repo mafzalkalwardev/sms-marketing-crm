@@ -30,19 +30,44 @@ jobs:
       - name: Install server deps
         working-directory: server
         run: npm install
-      - name: Seed and smoke test
+      - name: Migrate, seed, and unit tests
         working-directory: server
         env:
           DATABASE_URL: postgresql://signalmint:signalmint@localhost:5432/signalmint
           JWT_SECRET: ci_test_secret_minimum_length
           MASTER_ENCRYPTION_KEY: ci_master_key_for_tests_only
           VONAGE_MOCK_MODE: "true"
+          SMS_SANDBOX_MODE: "true"
         run: |
           npm run migrate
           npm run seed
+          npm run test:dialers:unit
+          npm run test:state
+          npm run test:message-audit
+          npm run test:campaign-queue
+          npm run test:campaign-fanout
+          npm run test:enterprise
+          LOAD_TEST_COUNT=30 LOAD_TEST_CONCURRENCY=3 npm run test:load
+          npm run test:live-readiness
+          npm run test:webhook-replay
+          npm run test:browser
+          npm run test:browser-session
+          npm run test:compliance
+          npm run test:deploy-readiness
+      - name: Smoke test with API
+        working-directory: server
+        env:
+          DATABASE_URL: postgresql://signalmint:signalmint@localhost:5432/signalmint
+          JWT_SECRET: ci_test_secret_minimum_length
+          MASTER_ENCRYPTION_KEY: ci_master_key_for_tests_only
+          VONAGE_MOCK_MODE: "true"
+          SMS_SANDBOX_MODE: "true"
+        run: |
           npm run dev &
           sleep 3
           npm run smoke
+          npm run test:dialers
+          npm run test:browser
 
   frontend-build:
     runs-on: ubuntu-latest

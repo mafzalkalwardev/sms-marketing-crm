@@ -3,6 +3,14 @@ const { query, queryOne, queryAll, withTransaction } = require('../../config/dat
 const { encryptSecret } = require('../../utils/crypto');
 const { getProviderStatus, sendTextMessage, normalizePhone } = require('../../services/smsService');
 const { listCatalog, getCatalogEntry } = require('../../services/providers/providerCatalog');
+const { catalogWithWebhooks, allWebhookUrls } = require('../../services/providers/providerRegistry');
+const {
+  testProviderConnection,
+  sendWarmupMessage,
+  connectProvider,
+  WARMUP_MESSAGE,
+} = require('../../services/providerConnectionService');
+const { getLiveReadiness } = require('../../services/liveReadinessService');
 
 const router = express.Router();
 
@@ -32,13 +40,13 @@ function vonageStatusPayload() {
 }
 
 router.get('/catalog', (req, res) => {
-  res.json({ catalog: listCatalog() });
+  res.json({ catalog: catalogWithWebhooks(), webhooks: allWebhookUrls() });
 });
 
 router.get('/', async (req, res, next) => {
   try {
     const providers = await queryAll(
-      'SELECT id, provider, label, adapter_type, status, is_default, is_enabled, created_at FROM providers ORDER BY created_at DESC'
+      'SELECT id, provider, label, adapter_type, status, is_default, is_enabled, health_ok, health_checked_at, health_error, health_mode, created_at FROM providers ORDER BY created_at DESC'
     );
     const enriched = providers.map((row) => ({
       ...row,
@@ -51,37 +59,130 @@ router.get('/', async (req, res, next) => {
 });
 
 router.get('/status', (req, res) => {
-  res.json({ platform: getProviderStatus(), vonage: vonageStatusPayload() });
+  res.json({
+    platform: getProviderStatus(),
+    liveReadiness: getLiveReadiness(),
+    vonage: vonageStatusPayload(),
+  });
 });
+
+function buildExtraConfig(provider, body) {
+  const { account_sid, base_url, application_id, account_id, extra_config } = body;
+  if (extra_config) return extra_config;
+  if (provider === 'bandwidth') {
+    return JSON.stringify({
+      accountId: account_id || account_sid,
+      applicationId: application_id,
+    });
+  }
+  if (provider === 'zoom') {
+    return JSON.stringify({ accountId: account_id || account_sid });
+  }
+  if (['3cx', 'ringox'].includes(provider) && base_url) {
+    return JSON.stringify({ baseUrl: base_url });
+  }
+  if (account_sid) return JSON.stringify({ accountSid: account_sid });
+  if (base_url) return JSON.stringify({ baseUrl: base_url });
+  return '';
+}
 
 router.post('/', async (req, res, next) => {
   try {
-    const { provider, label, api_key, api_secret, extra_config, account_sid, adapter_type, base_url } = req.body;
+    const {
+      provider,
+      label,
+      api_key,
+      api_secret,
+      extra_config,
+      account_sid,
+      account_id,
+      application_id,
+      adapter_type,
+      base_url,
+      warmup_to,
+      warmup_from,
+      send_warmup,
+      warmup_message,
+    } = req.body;
     const catalog = getCatalogEntry(provider);
     if (!provider || !catalog) return res.status(400).json({ error: 'Unknown provider type' });
 
     const lane = adapter_type || catalog.lane || 'api';
-    if (lane === 'api' && (!api_key || !api_secret) && provider !== 'telnyx') {
+    if (lane === 'api' && provider === 'telnyx' && !api_key) {
+      return res.status(400).json({ error: 'Telnyx API key is required' });
+    }
+    if (lane === 'api' && ['3cx', 'ringox'].includes(provider) && (!api_key || !base_url)) {
+      return res.status(400).json({ error: 'API token and base URL are required for this dialer' });
+    }
+    if (lane === 'api' && !['telnyx', '3cx', 'ringox'].includes(provider) && (!api_key || !api_secret)) {
       return res.status(400).json({ error: 'API key and secret are required for API dialers' });
     }
     if (lane === 'browser' && !base_url) {
       return res.status(400).json({ error: 'Base URL is required for browser dialers' });
     }
 
-    const extra = account_sid
-      ? JSON.stringify({ accountSid: account_sid })
-      : (extra_config || (base_url ? JSON.stringify({ baseUrl: base_url }) : ''));
+    const extra = buildExtraConfig(provider, {
+      account_sid,
+      account_id,
+      application_id,
+      base_url,
+      extra_config,
+    });
     const encryptedKey = api_key ? encryptSecret(api_key) : '';
     const encryptedSecret = api_secret ? encryptSecret(api_secret) : (api_key && lane === 'browser' ? encryptSecret('browser-profile') : '');
     const encryptedExtra = extra ? encryptSecret(extra) : '';
 
+    const existingCount = await queryOne('SELECT COUNT(*)::int AS count FROM providers');
+    const makeDefault = (existingCount?.count || 0) === 0;
+
     const providerRecord = await queryOne(
-      `INSERT INTO providers (provider, label, adapter_type, encrypted_api_key, encrypted_api_secret, encrypted_extra_config, status, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, 'active', $7)
+      `INSERT INTO providers (provider, label, adapter_type, encrypted_api_key, encrypted_api_secret, encrypted_extra_config, status, is_default, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8)
        RETURNING id, provider, label, adapter_type, status, is_default, is_enabled, created_at`,
-      [provider, label || catalog.label, lane, encryptedKey, encryptedSecret, encryptedExtra, req.user.id]
+      [provider, label || catalog.label, lane, encryptedKey, encryptedSecret, encryptedExtra, makeDefault, req.user.id]
     );
-    res.json({ ...providerRecord, catalog });
+
+    const fullRow = await queryOne('SELECT * FROM providers WHERE id = $1', [providerRecord.id]);
+
+    let browserProfile = null;
+    if (lane === 'browser') {
+      const browserProfileService = require('../../services/browserProfileService');
+      browserProfile = await browserProfileService.createProfileForProvider({
+        providerId: providerRecord.id,
+        adapterId: provider,
+        label: label || catalog.label,
+        baseUrl: base_url,
+        engine: req.body.engine || 'playwright_persistent',
+        selectors: req.body.selectors,
+      });
+    }
+
+    const connection = await testProviderConnection(fullRow);
+
+    const shouldWarmup = send_warmup !== false && Boolean(warmup_to);
+    let warmup = null;
+    if (shouldWarmup) {
+      try {
+        const warmupResult = await sendWarmupMessage({
+          user: req.user,
+          providerId: providerRecord.id,
+          to: warmup_to,
+          from: warmup_from,
+          message: warmup_message || WARMUP_MESSAGE,
+        });
+        warmup = { ...warmupResult.warmup, ok: warmupResult.ok };
+      } catch (error) {
+        warmup = { ok: false, error: error.message };
+      }
+    }
+
+    res.status(connection.ok ? 201 : 502).json({
+      ...providerRecord,
+      catalog,
+      connection,
+      warmup,
+      browserProfile,
+    });
   } catch (error) {
     next(error);
   }
@@ -165,6 +266,37 @@ router.post('/:id/set-default', async (req, res, next) => {
   }
 });
 
+router.post('/:id/connect', async (req, res, next) => {
+  try {
+    const result = await connectProvider({
+      user: req.user,
+      providerId: Number(req.params.id),
+      warmupTo: req.body.warmup_to,
+      from: req.body.warmup_from || req.body.from,
+      message: req.body.warmup_message || req.body.message,
+      skipWarmup: req.body.skip_warmup === true,
+    });
+    res.status(result.connection.ok ? 200 : 502).json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:id/warmup', async (req, res, next) => {
+  try {
+    const result = await sendWarmupMessage({
+      user: req.user,
+      providerId: Number(req.params.id),
+      to: req.body.to || req.body.warmup_to,
+      from: req.body.from || req.body.warmup_from,
+      message: req.body.message || req.body.warmup_message,
+    });
+    res.status(result.ok ? 200 : 502).json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post('/vonage/test', (req, res) => {
   res.json({ ok: true, provider: 'vonage', ...vonageStatusPayload() });
 });
@@ -202,13 +334,8 @@ router.post('/:id/test', async (req, res, next) => {
     const provider = await queryOne('SELECT * FROM providers WHERE id = $1', [req.params.id]);
     if (!provider) return res.status(404).json({ error: 'Provider not found' });
 
-    if (provider.provider === 'vonage') {
-      res.json({ ok: true, provider: 'vonage', ...vonageStatusPayload() });
-    } else if (provider.provider === 'twilio') {
-      res.json({ ok: true, status: 'configured', note: 'Test connection - check Twilio console for API status', mock: true });
-    } else {
-      res.json({ ok: true, status: 'configured', note: 'Test connection placeholder for custom provider', mock: true });
-    }
+    const connection = await testProviderConnection(provider);
+    res.status(connection.ok ? 200 : 502).json(connection);
   } catch (e) {
     next(e);
   }

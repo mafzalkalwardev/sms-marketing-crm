@@ -4,6 +4,7 @@ const { authenticate } = require('../middleware/auth');
 const { sendTextMessage, normalizePhone, isValidPhone } = require('../services/smsService');
 const { messagePreview } = require('../lib/conversations');
 const { sanitizeSendResult, sanitizeMessages } = require('../lib/sanitize');
+const { CONVERSATION_STATUSES, transitionConversation } = require('../services/conversationStateService');
 
 const router = express.Router();
 
@@ -142,6 +143,34 @@ router.post('/:id/messages', authenticate, async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+async function transitionOwnedConversation(req, res, next, toStatus) {
+  try {
+    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
+    const conversations = await conversationList(req.user.id, isAdmin);
+    const conversation = conversations.find((row) => row.id === Number(req.params.id));
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    const updated = await transitionConversation(conversation.id, toStatus, {
+      source: 'api',
+      actorUserId: req.user.id,
+    });
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+}
+
+router.post('/:id/archive', authenticate, (req, res, next) => {
+  transitionOwnedConversation(req, res, next, CONVERSATION_STATUSES.ARCHIVED);
+});
+
+router.post('/:id/close', authenticate, (req, res, next) => {
+  transitionOwnedConversation(req, res, next, CONVERSATION_STATUSES.CLOSED);
+});
+
+router.post('/:id/reopen', authenticate, (req, res, next) => {
+  transitionOwnedConversation(req, res, next, CONVERSATION_STATUSES.OPEN);
 });
 
 module.exports = router;

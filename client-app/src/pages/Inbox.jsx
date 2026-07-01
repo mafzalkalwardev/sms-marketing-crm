@@ -23,6 +23,7 @@ export default function Inbox({ setPage }) {
   const [composeOpen, setComposeOpen] = useState(false);
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
 
   const active = conversations.data?.find((c) => c.id === selected) || conversations.data?.[0];
   const filtered = conversations.data?.filter((c) =>
@@ -55,6 +56,7 @@ export default function Inbox({ setPage }) {
       setReply('');
       setMessages((current) => [...current, result.message]);
       conversations.refresh();
+      workspace.refresh();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -75,13 +77,28 @@ export default function Inbox({ setPage }) {
     <>
       <Topbar
         title="Inbox"
-        subtitle={workspace.data?.defaultLine ? `Line ${workspace.data.defaultLine}` : 'Your business texting inbox'}
+        subtitle={
+          workspace.data?.usage?.messageLimitMonthly
+            ? `${workspace.data.usage.messagesUsedThisMonth} / ${workspace.data.usage.messageLimitMonthly} messages this month`
+            : workspace.data?.defaultLine
+              ? `Line ${workspace.data.defaultLine}`
+              : 'Your business texting inbox'
+        }
         action={<Button onClick={() => setComposeOpen(true)}>+ New text</Button>}
       />
 
       {error && <div className="alert error">{error}</div>}
+      {workspace.data?.usage?.messageLimitMonthly
+        && workspace.data.usage.messagesRemaining !== null
+        && workspace.data.usage.messagesRemaining <= 50 && (
+        <div className={`alert ${workspace.data.usage.messagesRemaining === 0 ? 'error' : 'warn'}`}>
+          {workspace.data.usage.messagesRemaining === 0
+            ? 'Monthly message limit reached. Contact your admin to increase your plan.'
+            : `${workspace.data.usage.messagesRemaining} messages left this month.`}
+        </div>
+      )}
 
-      <section className="inbox-layout">
+      <section className={`inbox-layout ${mobileChatOpen ? 'mobile-chat-open' : ''}`}>
         <aside className="panel inbox-list">
           <input
             className="search-input"
@@ -101,7 +118,10 @@ export default function Inbox({ setPage }) {
                   key={conversation.id}
                   type="button"
                   className={`inbox-item ${active?.id === conversation.id ? 'active' : ''}`}
-                  onClick={() => setSelected(conversation.id)}
+                  onClick={() => {
+                    setSelected(conversation.id);
+                    setMobileChatOpen(true);
+                  }}
                 >
                   <div className="avatar small">{title.charAt(0).toUpperCase()}</div>
                   <div className="inbox-item-body">
@@ -124,6 +144,9 @@ export default function Inbox({ setPage }) {
           {active ? (
             <>
               <div className="chat-header">
+                <button type="button" className="mobile-back-btn" onClick={() => setMobileChatOpen(false)} aria-label="Back to conversations">
+                  ←
+                </button>
                 <div className="avatar">{displayName(active).charAt(0).toUpperCase()}</div>
                 <div className="chat-header-text">
                   <h3>{displayName(active)}</h3>

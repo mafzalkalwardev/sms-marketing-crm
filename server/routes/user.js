@@ -2,6 +2,8 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { query, queryOne, queryAll } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
+const { getUsageSummary } = require('../services/smsService');
+const { getOrgBranding } = require('../services/tenancyService');
 
 const router = express.Router();
 router.use(authenticate);
@@ -15,6 +17,7 @@ router.get('/workspace', async (req, res, next) => {
       [req.user.id]
     );
     const defaultRow = numbers.find((n) => n.is_default) || numbers[0] || null;
+    const usage = await getUsageSummary(req.user.id);
     res.json({
       messagingReady: numbers.length > 0,
       defaultLine: defaultRow?.phone_number || null,
@@ -25,6 +28,7 @@ router.get('/workspace', async (req, res, next) => {
         isDefault: Boolean(n.is_default),
         country: n.country || 'US',
       })),
+      usage,
       hint: 'Any assigned business line works — your messages route through the platform dialer automatically.',
     });
   } catch (e) {
@@ -73,6 +77,14 @@ router.post('/change-password', async (req, res, next) => {
     const hash = await bcrypt.hash(new_password, 10);
     await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [hash, req.user.id]);
     res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/branding', async (req, res, next) => {
+  try {
+    res.json(await getOrgBranding(req.user.organization_id));
   } catch (e) {
     next(e);
   }

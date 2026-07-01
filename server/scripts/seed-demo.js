@@ -43,19 +43,23 @@ const contactsByUser = {
   ],
 };
 
-async function upsertUser(email, password, name, role, status) {
+async function upsertUser(email, password, name, role, status, extras = {}) {
   const existing = await queryOne('SELECT * FROM users WHERE email = $1', [email]);
   const hash = bcrypt.hashSync(password, 10);
+  const organizationId = extras.organization_id ?? 1;
+  const managedBy = extras.managed_by_admin_id ?? null;
   if (existing) {
     await query(
-      'UPDATE users SET name = $1, password_hash = $2, role = $3, status = $4, updated_at = NOW() WHERE id = $5',
-      [name, hash, role, status, existing.id]
+      `UPDATE users SET name = $1, password_hash = $2, role = $3, status = $4,
+       organization_id = $5, managed_by_admin_id = $6, updated_at = NOW() WHERE id = $7`,
+      [name, hash, role, status, organizationId, managedBy, existing.id]
     );
     return existing.id;
   }
   const result = await query(
-    'INSERT INTO users (name, email, password_hash, role, status) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-    [name, email, hash, role, status]
+    `INSERT INTO users (name, email, password_hash, role, status, organization_id, managed_by_admin_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+    [name, email, hash, role, status, organizationId, managedBy]
   );
   return result.rows[0].id;
 }
@@ -114,8 +118,10 @@ async function seedConversations(userId, contactList) {
 async function seed() {
   const superAdminId = await upsertUser(superAdminEmail, superAdminPassword, superAdminName, 'super_admin', 'active');
   const adminId = await upsertUser(adminEmail, adminPassword, adminName, 'admin', 'active');
-  const user1Id = await upsertUser(user1Email, user1Password, userName1, 'user', 'active');
-  const user2Id = await upsertUser(user2Email, user2Password, userName2, 'user', 'active');
+  const user1Id = await upsertUser(user1Email, user1Password, userName1, 'user', 'active', { managed_by_admin_id: null });
+  const user2Id = await upsertUser(user2Email, user2Password, userName2, 'user', 'active', { managed_by_admin_id: null });
+
+  await query('UPDATE users SET managed_by_admin_id = $1 WHERE id = ANY($2::int[])', [adminId, [user1Id, user2Id]]);
 
   await ensureSubscription(superAdminId, 'enterprise');
   await ensureSubscription(adminId, 'enterprise');

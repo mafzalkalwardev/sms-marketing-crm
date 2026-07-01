@@ -7,6 +7,8 @@ const {
 const vonageProvider = require('./providers/vonageProvider');
 const twilioProvider = require('./providers/twilioProvider');
 const providerRouter = require('./providers/providerRouter');
+const messageStateService = require('./messageStateService');
+const { MESSAGE_STATUSES } = require('../domain/states');
 
 function normalizePhone(phone) {
   return vonageProvider.normalizePhone(phone);
@@ -25,14 +27,26 @@ function countSegments(text) {
   return Math.ceil(message.length / multiLimit);
 }
 
-function estimateCost(segments, country = 'US') {
-  const rates = { US: 0.008, UK: 0.045, CA: 0.0075, AU: 0.04 };
-  return Number((segments * (rates[country] || rates.US)).toFixed(4));
+function estimateCost(segments, country = 'US', providerKey = 'mock') {
+  const providerRates = {
+    mock: 0,
+    vonage: 0.008,
+    twilio: 0.0079,
+    telnyx: 0.007,
+    bandwidth: 0.0075,
+    zoom: 0.008,
+    ringox: 0.008,
+    '3cx': 0.008,
+    browser: 0,
+  };
+  const countryRates = { US: 0.008, UK: 0.045, CA: 0.0075, AU: 0.04 };
+  const base = providerRates[providerKey] ?? countryRates[country] ?? countryRates.US;
+  return Number((segments * base).toFixed(4));
 }
 
 function getProviderStatus() {
-  const vonageLive = vonageProvider.configuredForLive();
-  const twilioLive = twilioProvider.isConfigured({});
+  const vonageLive = vonageProvider.configuredForLive({});
+  const twilioLive = twilioProvider.configuredForLive({});
   const liveReady = Boolean(vonageLive || twilioLive);
   const sandbox = vonageProvider.isMockMode() && !twilioLive;
 
@@ -76,6 +90,17 @@ async function monthlyMessageCount(userId) {
     [userId]
   );
   return row?.n || 0;
+}
+
+async function getUsageSummary(userId) {
+  const user = await queryOne('SELECT message_limit_monthly FROM users WHERE id = $1', [userId]);
+  const used = await monthlyMessageCount(userId);
+  const limit = Number(user?.message_limit_monthly || 0);
+  return {
+    messagesUsedThisMonth: used,
+    messageLimitMonthly: limit || null,
+    messagesRemaining: limit > 0 ? Math.max(0, limit - used) : null,
+  };
 }
 
 async function assertCanSend({ user, to, from, text, allowEnvSender = false }) {
@@ -134,6 +159,9 @@ async function sendTextMessage({
   organizationId = 1,
   allowEnvSender = false,
   isTest = false,
+  providerId = null,
+  campaignId = null,
+  idempotencyKey = null,
 }) {
   const toNorm = normalizePhone(to);
   const defaultNumber = await defaultSenderForUser(user.id);
@@ -141,6 +169,27 @@ async function sendTextMessage({
     from || defaultNumber?.phone_number || (allowEnvSender ? process.env.VONAGE_DEFAULT_FROM : '')
   );
   const text = String(message || '').trim();
+
+  if (idempotencyKey) {
+    const existing = await queryOne('SELECT * FROM messages WHERE idempotency_key = $1', [idempotencyKey]);
+    if (existing) {
+      return {
+        ok: existing.status !== MESSAGE_STATUSES.FAILED,
+        mode: 'idempotent',
+        provider: existing.provider,
+        providerMessageId: existing.provider_message_id,
+        status: existing.status,
+        message: existing,
+        conversation: existing.conversation_id
+          ? await queryOne('SELECT * FROM conversations WHERE id = $1', [existing.conversation_id])
+          : null,
+        contact: existing.contact_id
+          ? await queryOne('SELECT * FROM contacts WHERE id = $1', [existing.contact_id])
+          : null,
+        error: existing.error_message,
+      };
+    }
+  }
 
   await assertCanSend({ user, to: toNorm, from: requestedFrom, text, allowEnvSender });
 
@@ -159,9 +208,32 @@ async function sendTextMessage({
     contactId: contact.id,
   });
   const segments = countSegments(text);
-  const cost = estimateCost(segments, contact.country || country);
 
-  const resolved = await providerRouter.resolveForNumber(requestedFrom);
+  const resolved = providerId
+    ? await providerRouter.resolveForProviderId(providerId)
+    : await providerRouter.resolveForNumber(requestedFrom);
+
+  const cost = estimateCost(segments, contact.country || country, resolved.providerKey || 'mock');
+
+  const saved = await messageStateService.createOutboundMessage({
+    userId: user.id,
+    workspaceId,
+    organizationId: user.organization_id || organizationId,
+    contactId: contact.id,
+    conversationId: conversation.id,
+    campaignId,
+    toNumber: toNorm,
+    fromNumber: requestedFrom,
+    messageBody: text,
+    provider: resolved.providerKey || 'mock',
+    providerId: resolved.providerId,
+    segments,
+    costEstimate: cost,
+    isTest,
+    idempotencyKey,
+    actorUserId: user.id,
+  });
+
   const providerResult = await providerRouter.sendViaResolved(resolved, {
     to: toNorm,
     from: requestedFrom,
@@ -170,57 +242,25 @@ async function sendTextMessage({
 
   const mode = providerResult.mode || 'mock';
   const provider = providerResult.provider || (mode === 'mock' ? 'mock' : resolved.providerKey);
-  const status = mode === 'mock'
-    ? 'sent_mock'
-    : (providerResult.ok ? (providerResult.status || 'accepted') : 'failed');
-  const providerMessageId = providerResult.providerMessageId || null;
-  const metadata = JSON.stringify({
-    providerMode: mode,
-    raw: providerResult.raw || null,
-  });
 
-  const insert = await query(
-    `INSERT INTO messages (
-      user_id, workspace_id, organization_id, contact_id, conversation_id, direction, to_number, from_number,
-      message_body, provider, provider_id, provider_message_id, status, segments, cost_estimate,
-      error_message, internal_error_code, sent_at, is_test, metadata
-    ) VALUES ($1,$2,$3,$4,$5,'outbound',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),$17,$18::jsonb)
-    RETURNING *`,
-    [
-      user.id,
-      workspaceId,
-      user.organization_id || organizationId,
-      contact.id,
-      conversation.id,
-      toNorm,
-      requestedFrom,
-      text,
-      provider,
-      resolved.providerId,
-      providerMessageId,
-      status,
-      segments,
-      cost,
-      providerResult.error || null,
-      providerResult.error ? 'send_failed' : null,
-      isTest,
-      metadata,
-    ]
-  );
+  const finalMessage = await messageStateService.applyProviderResult(saved.id, {
+    ...providerResult,
+    provider,
+    mode,
+  }, { actorUserId: user.id });
 
   await query(
     'UPDATE conversations SET phone = $1, last_message_preview = $2, last_message_at = NOW(), updated_at = NOW() WHERE id = $3',
     [toNorm, text.slice(0, 120), conversation.id]
   );
 
-  const saved = insert.rows[0];
   return {
     ok: Boolean(providerResult.ok),
     mode,
     provider,
-    providerMessageId,
-    status,
-    message: saved,
+    providerMessageId: finalMessage.provider_message_id,
+    status: finalMessage.status,
+    message: finalMessage,
     conversation,
     contact,
     error: providerResult.error,
@@ -231,6 +271,7 @@ module.exports = {
   countSegments,
   estimateCost,
   getProviderStatus,
+  getUsageSummary,
   isValidPhone,
   normalizePhone,
   sendTextMessage,

@@ -3,7 +3,8 @@ export default function MobileNav({ page, setPage }) {
     { id: 'messages', label: 'Inbox', icon: '◉' },
     { id: 'newText', label: 'New', icon: '✎' },
     { id: 'contacts', label: 'People', icon: '◎' },
-    { id: 'numbers', label: 'Lines', icon: '☎' },
+    { id: 'dashboard', label: 'Stats', icon: '▤' },
+    { id: 'compliance', label: 'Rules', icon: '⚖' },
     { id: 'settings', label: 'More', icon: '⚙' },
   ];
 

@@ -1,6 +1,6 @@
 {
   "name": "server",
-  "version": "3.1.0",
+  "version": "3.3.0",
   "description": "SignalMint API — multi-provider SMS backend",
   "main": "server.js",
   "scripts": {
@@ -9,6 +9,24 @@
     "migrate": "node -e \"require('dotenv').config(); require('./config/database').initDatabase().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); })\"",
     "smoke": "node scripts/smoke-test.js",
     "smoke-test": "node scripts/smoke-test.js",
+    "test:dialers": "node scripts/test-all-dialers.js",
+    "test:dialers:unit": "node scripts/test-dialer-adapters.js",
+    "test:browser": "node scripts/test-browser-lane.js",
+    "test:state": "node scripts/test-state-machine.js",
+    "test:message-audit": "node scripts/test-message-audit.js",
+    "test:campaign-queue": "node scripts/test-campaign-queue.js",
+    "test:campaign-fanout": "node scripts/test-campaign-fanout.js",
+    "test:campaign-bullmq": "node scripts/test-campaign-bullmq.js",
+    "test:enterprise": "node scripts/test-enterprise.js",
+    "campaign-worker": "node scripts/campaign-worker.js",
+    "test:load": "node scripts/load-test.js",
+    "test:load:stress": "node scripts/load-test.js 1000",
+    "test:live-readiness": "node scripts/test-live-readiness.js",
+    "test:webhook-replay": "node scripts/test-webhook-replay.js",
+    "test:browser-session": "node scripts/test-browser-session.js",
+    "test:compliance": "node scripts/test-compliance.js",
+    "test:deploy-readiness": "node scripts/test-deploy-readiness.js",
+    "test:all": "node scripts/run-all-tests.js",
     "seed": "node scripts/seed-demo.js"
   },
   "engines": {
@@ -17,10 +35,12 @@
   "dependencies": {
     "@vonage/server-sdk": "^3.27.0",
     "bcryptjs": "^3.0.3",
+    "bullmq": "^5.79.2",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
+    "ioredis": "^5.11.1",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.16.3",
     "twilio": "^5.8.0"
