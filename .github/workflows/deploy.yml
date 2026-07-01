@@ -46,14 +46,9 @@ jobs:
           npm run test:message-audit
           npm run test:campaign-queue
           npm run test:campaign-fanout
-          npm run test:enterprise
           LOAD_TEST_COUNT=30 LOAD_TEST_CONCURRENCY=3 npm run test:load
           npm run test:live-readiness
           npm run test:webhook-replay
-          npm run test:browser
-          npm run test:browser-session
-          npm run test:compliance
-          npm run test:deploy-readiness
       - name: Smoke test with API
         working-directory: server
         env:
@@ -68,6 +63,10 @@ jobs:
           npm run smoke
           npm run test:dialers
           npm run test:browser
+          npm run test:browser-session
+          npm run test:compliance
+          npm run test:enterprise
+          npm run test:deploy-readiness
 
   frontend-build:
     runs-on: ubuntu-latest

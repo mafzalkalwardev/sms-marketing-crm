@@ -442,6 +442,7 @@ export default function SuperAdminConsole() {
                 </tbody>
               </table>
             )}
+          </div>
           <div>
             <h4>Webhook dead letters</h4>
             {!deadLetters.data?.deadLetters?.length && <p className="muted-copy">No failed webhooks pending retry.</p>}
