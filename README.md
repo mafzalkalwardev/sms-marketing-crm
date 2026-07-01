@@ -4,8 +4,8 @@ White-label business texting platform with an **opaque multi-provider backend**.
 
 ## What's new in v3.4
 
-- **TONY AI Agent** — full autonomous agent platform in [`tony-agent/`](tony-agent/) (memory, skills, tools, gateway, crew)
 - **Inbox polling** — conversations refresh every 12s without manual reload
+- **TONY AI Agent** moved to standalone repo: `D:\TONY AI AGENT` (open in Cursor separately)
 
 ## What's new in v3.3
 
@@ -24,19 +24,6 @@ White-label business texting platform with an **opaque multi-provider backend**.
 - **Render blueprint** — API + worker + Postgres with health checks (`render.yaml`)
 
 Prior v3.1: PostgreSQL, provider router, Super Admin, Twilio, browser lane scaffold, CI.
-
-## TONY AI Agent
-
-Personal AI operating system at [`tony-agent/`](tony-agent/README.md):
-
-```powershell
-cd tony-agent
-npm install
-npm test
-npm run chat
-```
-
-Patterns from JARVIS, OpenClaw, CrewAI, LangGraph, AutoGPT, and 15+ other OSS agents. Integrates with SignalMint for SMS ops.
 
 ## Architecture
 
