@@ -1,0 +1,16 @@
+services:
+  tony:
+    build: .
+    ports:
+      - "8787:8787"
+    environment:
+      PORT: 8787
+      TONY_LLM_PROVIDER: mock
+      TONY_API_TOKEN: docker_tony_token
+      TONY_WORKSPACE_ROOT: /workspace
+    volumes:
+      - ..:/workspace:ro
+      - tony_data:/app/data
+
+volumes:
+  tony_data:

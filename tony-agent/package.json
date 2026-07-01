@@ -1,0 +1,26 @@
+{
+  "name": "tony-agent",
+  "version": "1.0.0",
+  "description": "TONY — autonomous AI agent with memory, skills, tools, and multi-channel gateway",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/gateway/server.js",
+    "cli": "node src/cli.js",
+    "chat": "node src/cli.js chat",
+    "run": "node src/cli.js run",
+    "remember": "node src/cli.js remember",
+    "skills": "node src/cli.js skills",
+    "test": "node scripts/test-tony.js",
+    "dev": "node --watch src/gateway/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  }
+}

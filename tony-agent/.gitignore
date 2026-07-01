@@ -1,0 +1,4 @@
+data/
+data-test/
+.env
+node_modules/

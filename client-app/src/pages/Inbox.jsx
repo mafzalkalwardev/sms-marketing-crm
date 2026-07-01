@@ -41,7 +41,13 @@ export default function Inbox({ setPage }) {
   useEffect(() => {
     if (!active) return;
     setSelected(active.id);
-    api(`/api/conversations/${active.id}/messages`).then(setMessages).catch(() => setMessages([]));
+    const load = () => api(`/api/conversations/${active.id}/messages`).then(setMessages).catch(() => setMessages([]));
+    load();
+    const interval = setInterval(() => {
+      conversations.refresh();
+      load();
+    }, 12000);
+    return () => clearInterval(interval);
   }, [active?.id]);
 
   const send = async () => {

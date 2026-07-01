@@ -1,0 +1,155 @@
+{
+  "version": "1.0.0",
+  "description": "Curated patterns from leading open-source AI agent repositories",
+  "agents": [
+    {
+      "name": "Microsoft JARVIS (HuggingGPT)",
+      "repo": "https://github.com/microsoft/JARVIS",
+      "stars": "32000+",
+      "description": "LLM controller routes tasks to HuggingFace expert models",
+      "patterns": ["task planning", "model selection", "task execution", "response generation", "multi-modal"],
+      "stage_pipeline": ["plan", "select", "execute", "synthesize"]
+    },
+    {
+      "name": "OpenClaw",
+      "repo": "https://github.com/openclaw/openclaw",
+      "stars": "380000+",
+      "description": "Personal AI assistant with gateway, skills, multi-channel",
+      "patterns": ["local-first gateway", "workspace skills", "session model", "multi-agent routing", "MCP tools"]
+    },
+    {
+      "name": "CrewAI",
+      "repo": "https://github.com/crewAIInc/crewAI",
+      "stars": "25000+",
+      "description": "Role-based multi-agent orchestration",
+      "patterns": ["roles", "tasks", "delegation", "sequential and hierarchical crews"]
+    },
+    {
+      "name": "LangGraph",
+      "repo": "https://github.com/langchain-ai/langgraph",
+      "stars": "15000+",
+      "description": "Stateful graph workflows for agents",
+      "patterns": ["state graph", "checkpoints", "human-in-the-loop", "cycles", "branching"]
+    },
+    {
+      "name": "AutoGPT",
+      "repo": "https://github.com/Significant-Gravitas/AutoGPT",
+      "stars": "170000+",
+      "description": "Autonomous goal pursuit with tool loops",
+      "patterns": ["goal decomposition", "continuous loop", "memory", "web browsing", "file operations"]
+    },
+    {
+      "name": "MetaGPT",
+      "repo": "https://github.com/geekan/MetaGPT",
+      "stars": "45000+",
+      "description": "Multi-agent software company simulation",
+      "patterns": ["SOPs", "role specialization", "structured outputs", "code generation"]
+    },
+    {
+      "name": "SuperAGI",
+      "repo": "https://github.com/TransformerOptimus/SuperAGI",
+      "stars": "16000+",
+      "description": "Dev-first autonomous agent framework",
+      "patterns": ["tool marketplace", "agent memory", "performance telemetry", "scheduling"]
+    },
+    {
+      "name": "BabyAGI",
+      "repo": "https://github.com/yoheinakajima/babyagi",
+      "stars": "19000+",
+      "description": "Task creation and prioritization loop",
+      "patterns": ["task queue", "prioritization", "execution", "result storage"]
+    },
+    {
+      "name": "OpenAI Agents SDK",
+      "repo": "https://github.com/openai/openai-agents-python",
+      "stars": "8000+",
+      "description": "Official lightweight agent orchestration",
+      "patterns": ["handoffs", "guardrails", "tracing", "function tools"]
+    },
+    {
+      "name": "Dapr Agents",
+      "repo": "https://github.com/dapr/dapr-agents",
+      "stars": "500+",
+      "description": "Distributed durable agents on Dapr",
+      "patterns": ["virtual actors", "state persistence", "fault tolerance", "workflow"]
+    },
+    {
+      "name": "OpenHive (Hive)",
+      "repo": "https://github.com/adenhq/hive",
+      "stars": "10000+",
+      "description": "Multi-agent harness for business workflows",
+      "patterns": ["DAG execution", "role memory", "fault tolerance", "async parallel"]
+    },
+    {
+      "name": "PraisonAI",
+      "repo": "https://github.com/MervinPraison/PraisonAI",
+      "stars": "5000+",
+      "description": "Low-code multi-agent automation",
+      "patterns": ["capability registry", "agent teams", "UI", "integrations"]
+    },
+    {
+      "name": "Friday (executive assistant)",
+      "repo": "pattern",
+      "stars": "N/A",
+      "description": "Executive briefing and calendar-aware chief-of-staff",
+      "patterns": ["daily brief", "priority inbox", "delegation", "proactive alerts"]
+    },
+    {
+      "name": "Nova (pattern)",
+      "repo": "pattern",
+      "stars": "N/A",
+      "description": "Voice-first ambient assistant pattern",
+      "patterns": ["wake word", "streaming STT/TTS", "device control", "context carryover"]
+    },
+    {
+      "name": "Alexa Skills Kit",
+      "repo": "https://github.com/alexa/alexa-skills-kit-sdk-for-nodejs",
+      "stars": "2000+",
+      "description": "Intent-based voice skill model",
+      "patterns": ["intents", "slots", "session attributes", "skill manifest"]
+    },
+    {
+      "name": "Semantic Kernel",
+      "repo": "https://github.com/microsoft/semantic-kernel",
+      "stars": "22000+",
+      "description": "Microsoft orchestration SDK for AI plugins",
+      "patterns": ["plugins", "planners", "memory connectors", "prompt templates"]
+    },
+    {
+      "name": "LlamaIndex Agents",
+      "repo": "https://github.com/run-llama/llama_index",
+      "stars": "38000+",
+      "description": "RAG-centric agent tooling",
+      "patterns": ["query engines", "tool retrieval", "document agents", "workflow"]
+    },
+    {
+      "name": "Haystack Agents",
+      "repo": "https://github.com/deepset-ai/haystack",
+      "stars": "18000+",
+      "description": "Production NLP/agent pipelines",
+      "patterns": ["pipelines", "components", "document stores", "evaluation"]
+    },
+    {
+      "name": "GPT Engineer",
+      "repo": "https://github.com/gpt-engineer-org/gpt-engineer",
+      "stars": "52000+",
+      "description": "Autonomous codebase generation",
+      "patterns": ["spec to code", "iterative improvement", "repo map"]
+    },
+    {
+      "name": "Aider",
+      "repo": "https://github.com/paul-gauthier/aider",
+      "stars": "25000+",
+      "description": "Pair programming in terminal",
+      "patterns": ["git integration", "repo map", "edit formats", "lint/test loop"]
+    }
+  ],
+  "tony_adoptions": [
+    "JARVIS 4-stage planner in src/core/planner.js",
+    "OpenClaw-style skills loader in src/skills/",
+    "Episodic + semantic + procedural memory layers",
+    "ReAct tool loop in src/core/agent.js",
+    "Gateway + WebSocket in src/gateway/",
+    "SignalMint domain tools in src/tools/registry.js"
+  ]
+}
