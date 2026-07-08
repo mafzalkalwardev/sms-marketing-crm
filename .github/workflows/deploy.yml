@@ -38,6 +38,8 @@ jobs:
           MASTER_ENCRYPTION_KEY: ci_master_key_for_tests_only
           VONAGE_MOCK_MODE: "true"
           SMS_SANDBOX_MODE: "true"
+          OTP_LOG_TO_CONSOLE: "true"
+          REQUIRE_ADMIN_APPROVAL: "true"
         run: |
           npm run migrate
           npm run seed
@@ -49,6 +51,7 @@ jobs:
           LOAD_TEST_COUNT=30 LOAD_TEST_CONCURRENCY=3 npm run test:load
           npm run test:live-readiness
           npm run test:webhook-replay
+          npm run test:auth-otp
       - name: Start automation worker
         run: |
           docker build -t signalmint-worker ./automation-worker
@@ -75,6 +78,8 @@ jobs:
           MASTER_ENCRYPTION_KEY: ci_master_key_for_tests_only
           VONAGE_MOCK_MODE: "true"
           SMS_SANDBOX_MODE: "true"
+          OTP_LOG_TO_CONSOLE: "true"
+          REQUIRE_ADMIN_APPROVAL: "true"
           AUTOMATION_WORKER_URL: http://localhost:5055
           WORKER_SERVICE_TOKEN: ci_worker_token_for_tests
         run: |
@@ -86,6 +91,8 @@ jobs:
           npm run test:browser-session
           npm run test:compliance
           npm run test:enterprise
+          npm run test:governance
+          npm run test:auth-otp
           npm run test:deploy-readiness
 
   frontend-build:

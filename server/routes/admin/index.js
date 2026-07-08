@@ -2,7 +2,7 @@ const express = require('express');
 const { query, queryOne, queryAll } = require('../../config/database');
 const { bindOrgFilter } = require('../../lib/orgScope');
 const { authenticate, requireAdmin } = require('../../middleware/auth');
-const { assertUserInOrg, getOrgBranding } = require('../../services/tenancyService');
+const { assertUserInOrg, getOrgBranding, resolveTenancy } = require('../../services/tenancyService');
 const { createApiKey, listApiKeys, revokeApiKey } = require('../../services/apiKeyService');
 
 const router = express.Router();
@@ -56,6 +56,9 @@ router.put('/users/:id/status', async (req, res, next) => {
     await assertUserInOrg(req.user, req.params.id);
 
     await query('UPDATE users SET status = $1, updated_at = NOW() WHERE id = $2', [status, req.params.id]);
+    if (status === 'suspended' || status === 'inactive') {
+      await revokeAllSessions(req.params.id);
+    }
     await query(
       'INSERT INTO audit_logs (actor_user_id, target_user_id, action, details) VALUES ($1, $2, $3, $4::jsonb)',
       [req.user.id, req.params.id, 'user_status_changed', JSON.stringify({ newStatus: status, userName: user.name, userEmail: user.email })]
@@ -104,6 +107,15 @@ router.put('/users/:id/subscription', async (req, res, next) => {
     values.push(req.params.id);
     await query(`UPDATE users SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${idx}`, values);
 
+    if (plan_name) {
+      await query(
+        `INSERT INTO subscriptions (user_id, plan_name, status, starts_at)
+         VALUES ($1, $2, 'active', NOW())
+         ON CONFLICT (user_id) DO UPDATE SET plan_name = EXCLUDED.plan_name, status = 'active', updated_at = NOW()`,
+        [req.params.id, plan_name]
+      );
+    }
+
     await query(
       'INSERT INTO audit_logs (actor_user_id, target_user_id, action, details) VALUES ($1, $2, $3, $4::jsonb)',
       [req.user.id, req.params.id, 'subscription_updated', JSON.stringify({ userName: user.name, updates: req.body })]
@@ -138,7 +150,7 @@ router.get('/usage', async (req, res, next) => {
       params.push(user_id);
       idx += 1;
     } else if (req.user.role !== 'super_admin') {
-      sql += ` AND (u.organization_id = $${idx} OR u.managed_by_admin_id = $${idx + 1} OR u.id = $${idx + 1})`;
+      sql += ` AND u.organization_id = $${idx} AND (u.managed_by_admin_id = $${idx + 1} OR u.id = $${idx + 1})`;
       params.push(req.user.organization_id || 1, req.user.id);
       idx += 2;
     }
@@ -347,6 +359,166 @@ router.delete('/api-keys/:id', async (req, res, next) => {
   try {
     res.json(await revokeApiKey({ user: req.user, keyId: req.params.id }));
   } catch (e) {
+    next(e);
+  }
+});
+
+const bcrypt = require('bcryptjs');
+const { resolveTenancy } = require('../../services/tenancyService');
+const { revokeAllSessions } = require('../../services/sessionService');
+
+router.get('/pending-approvals', async (req, res, next) => {
+  try {
+    let sql = `SELECT id, name, email, phone, role, status, organization_id, managed_by_admin_id, created_at
+      FROM users WHERE status = 'pending_approval'`;
+    const params = [];
+    if (req.user.role !== 'super_admin') {
+      sql += ` AND (organization_id = $1 OR managed_by_admin_id = $2)`;
+      params.push(req.user.organization_id || 1, req.user.id);
+    }
+    sql += ' ORDER BY created_at ASC';
+    const users = await queryAll(sql, params);
+    res.json(users);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post('/users', async (req, res, next) => {
+  try {
+    const {
+      name,
+      email,
+      password,
+      phone,
+      message_limit_monthly: messageLimit,
+      number_limit: numberLimit,
+      subscription_plan: planName,
+    } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'Name, email, and password are required' });
+    }
+    const hash = await bcrypt.hash(password, 10);
+    const { organizationId, workspaceId } = await resolveTenancy(req.user);
+
+    const user = await queryOne(
+      `INSERT INTO users (name, email, password_hash, phone, role, status, organization_id, workspace_id,
+       managed_by_admin_id, message_limit_monthly, number_limit, subscription_plan, email_verified_at, phone_verified_at)
+       VALUES ($1, $2, $3, $4, 'user', 'active', $5, $6, $7, $8, $9, $10, NOW(), NOW()) RETURNING *`,
+      [
+        name,
+        email.toLowerCase(),
+        hash,
+        phone || null,
+        organizationId,
+        workspaceId,
+        req.user.id,
+        messageLimit || 1000,
+        numberLimit || 2,
+        planName || 'starter',
+      ]
+    );
+    await query(
+      "INSERT INTO subscriptions (user_id, plan_name, status, starts_at) VALUES ($1, $2, 'active', NOW())",
+      [user.id, planName || 'starter']
+    );
+    await query(
+      'INSERT INTO audit_logs (actor_user_id, target_user_id, action, details) VALUES ($1, $2, $3, $4::jsonb)',
+      [req.user.id, user.id, 'user_created', JSON.stringify({ email: user.email })]
+    );
+    res.status(201).json({ ok: true, user });
+  } catch (e) {
+    if (e.code === '23505') return res.status(400).json({ error: 'Email already exists' });
+    next(e);
+  }
+});
+
+router.put('/users/:id', async (req, res, next) => {
+  try {
+    const user = await queryOne('SELECT * FROM users WHERE id = $1', [req.params.id]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    await assertUserInOrg(req.user, req.params.id);
+    if (user.role !== 'user') return res.status(403).json({ error: 'Can only edit managed users' });
+
+    const { name, email, phone, message_limit_monthly: messageLimit, number_limit: numberLimit } = req.body;
+    await query(
+      `UPDATE users SET name = COALESCE($1, name), email = COALESCE($2, email), phone = COALESCE($3, phone),
+       message_limit_monthly = COALESCE($4, message_limit_monthly), number_limit = COALESCE($5, number_limit),
+       updated_at = NOW() WHERE id = $6`,
+      [name, email?.toLowerCase(), phone, messageLimit, numberLimit, user.id]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete('/users/:id', async (req, res, next) => {
+  try {
+    const user = await queryOne('SELECT * FROM users WHERE id = $1', [req.params.id]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    await assertUserInOrg(req.user, req.params.id);
+    if (user.role !== 'user') return res.status(403).json({ error: 'Can only delete managed users' });
+
+    await query("UPDATE users SET status = 'inactive', updated_at = NOW() WHERE id = $1", [user.id]);
+    await revokeAllSessions(user.id);
+    await query(
+      'INSERT INTO audit_logs (actor_user_id, target_user_id, action, details) VALUES ($1, $2, $3, $4::jsonb)',
+      [req.user.id, user.id, 'user_deleted', JSON.stringify({ userName: user.name })]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post('/users/:id/approve', async (req, res, next) => {
+  try {
+    const user = await queryOne('SELECT * FROM users WHERE id = $1', [req.params.id]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.status !== 'pending_approval') {
+      return res.status(400).json({ error: 'User is not pending approval' });
+    }
+    if (req.user.role !== 'super_admin') {
+      if (user.organization_id && user.organization_id !== req.user.organization_id) {
+        return res.status(403).json({ error: 'User is outside your organization' });
+      }
+      if (user.managed_by_admin_id && user.managed_by_admin_id !== req.user.id) {
+        return res.status(403).json({ error: 'User is not assigned to you' });
+      }
+    }
+
+    const { organizationId, workspaceId } = await resolveTenancy(req.user);
+    await query(
+      `UPDATE users SET status = 'active', organization_id = COALESCE(organization_id, $1),
+       workspace_id = COALESCE(workspace_id, $2), managed_by_admin_id = COALESCE(managed_by_admin_id, $3),
+       updated_at = NOW() WHERE id = $4`,
+      [organizationId, workspaceId, req.user.id, user.id]
+    );
+    await query("UPDATE subscriptions SET status = 'active' WHERE user_id = $1", [user.id]);
+    await query(
+      'INSERT INTO audit_logs (actor_user_id, target_user_id, action, details) VALUES ($1, $2, $3, $4::jsonb)',
+      [req.user.id, user.id, 'user_approved', JSON.stringify({})]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post('/invite-codes', async (req, res, next) => {
+  try {
+    const crypto = require('crypto');
+    const code = req.body.code || `INV-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+    const { max_uses: maxUses, expires_at: expiresAt } = req.body;
+    const row = await queryOne(
+      `INSERT INTO org_invite_codes (code, organization_id, admin_user_id, max_uses, expires_at)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [code, req.user.organization_id, req.user.id, maxUses || null, expiresAt || null]
+    );
+    res.status(201).json(row);
+  } catch (e) {
+    if (e.code === '23505') return res.status(400).json({ error: 'Invite code already exists' });
     next(e);
   }
 });

@@ -5,8 +5,10 @@ function isSandboxMode() {
   return String(process.env.VONAGE_MOCK_MODE || 'true').toLowerCase() !== 'false';
 }
 
-function shouldUseMockSend(resolved) {
+function shouldUseMockSend(resolved, { organizationDeliveryMode, userStatus } = {}) {
   if (isSandboxMode()) return true;
+  if (userStatus && userStatus !== 'active') return true;
+  if (organizationDeliveryMode && organizationDeliveryMode !== 'live') return true;
   if (resolved.adapterType === 'browser') {
     return !process.env.AUTOMATION_WORKER_URL;
   }

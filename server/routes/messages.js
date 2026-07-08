@@ -4,21 +4,24 @@ const { authenticate } = require('../middleware/auth');
 const { sanitizeMessage } = require('../lib/sanitize');
 const messageStateService = require('../services/messageStateService');
 const { toCustomerStatus } = require('../domain/states');
+const { dataUserIdClause } = require('../lib/orgScope');
 
 const router = express.Router();
 router.use(authenticate);
 
-async function messageForUser(messageId, userId, isAdmin) {
-  const message = await queryOne('SELECT * FROM messages WHERE id = $1', [messageId]);
-  if (!message) return null;
-  if (!isAdmin && message.user_id !== userId) return null;
-  return message;
+async function messageForUser(messageId, actor) {
+  let sql = 'SELECT * FROM messages WHERE id = $1';
+  const params = [messageId];
+  const scope = dataUserIdClause(actor, 'user_id', 2);
+  sql += scope.clause;
+  params.push(...scope.params);
+  const message = await queryOne(sql, params);
+  return message || null;
 }
 
 router.get('/:id', async (req, res, next) => {
   try {
-    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
-    const message = await messageForUser(Number(req.params.id), req.user.id, isAdmin);
+    const message = await messageForUser(Number(req.params.id), req.user);
     if (!message) return res.status(404).json({ error: 'Message not found' });
     res.json(sanitizeMessage(message));
   } catch (e) {
@@ -28,8 +31,7 @@ router.get('/:id', async (req, res, next) => {
 
 router.get('/:id/timeline', async (req, res, next) => {
   try {
-    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
-    const message = await messageForUser(Number(req.params.id), req.user.id, isAdmin);
+    const message = await messageForUser(Number(req.params.id), req.user);
     if (!message) return res.status(404).json({ error: 'Message not found' });
     const timeline = await messageStateService.getStatusTimeline(message.id);
     res.json({

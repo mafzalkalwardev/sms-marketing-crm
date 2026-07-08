@@ -14,7 +14,7 @@ function resolveTheme(theme) {
 }
 
 export function ThemeProvider({ children }) {
-  const [theme, setThemeState] = useState(() => localStorage.getItem('sm-theme') || 'system');
+  const [theme, setThemeState] = useState(() => localStorage.getItem('sm-theme') || 'light');
   const [resolved, setResolved] = useState(() => resolveTheme(theme));
 
   const setTheme = (next) => {

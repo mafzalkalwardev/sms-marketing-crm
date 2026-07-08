@@ -1,19 +1,23 @@
 const express = require('express');
 const { query, queryOne, queryAll } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
+const { dataUserIdClause, assertContactAccess } = require('../lib/orgScope');
+const { resolveTenancy } = require('../services/tenancyService');
 
 const router = express.Router();
 router.use(authenticate);
 
 router.get('/', async (req, res, next) => {
   try {
-    const userId = req.user.id;
-    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
     const { search = '', country = '', consent = '', unsubscribed = '' } = req.query;
+    let sql = 'SELECT * FROM contacts WHERE 1=1';
+    const params = [];
+    let idx = 1;
 
-    let sql = isAdmin ? 'SELECT * FROM contacts WHERE 1=1' : 'SELECT * FROM contacts WHERE user_id = $1';
-    const params = isAdmin ? [] : [userId];
-    let idx = params.length + 1;
+    const scope = dataUserIdClause(req.user, 'user_id', idx);
+    sql += scope.clause;
+    params.push(...scope.params);
+    idx = scope.nextIdx;
 
     if (search) {
       sql += ` AND (name ILIKE $${idx} OR phone ILIKE $${idx + 1} OR email ILIKE $${idx + 2})`;
@@ -47,11 +51,24 @@ router.post('/', async (req, res, next) => {
   try {
     const { name, phone, country, email, tags, consent_status, consent_source, notes } = req.body;
     if (!phone) return res.status(400).json({ error: 'Phone number is required' });
+    const { organizationId, workspaceId } = await resolveTenancy(req.user);
 
     const result = await query(
-      `INSERT INTO contacts (user_id, workspace_id, name, phone, country, email, tags, notes, consent_status, consent_source, consent_date)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW()) RETURNING id`,
-      [req.user.id, 1, name || '', phone, country || 'US', email || null, tags || '', notes || '', consent_status || 'unknown', consent_source || 'manual']
+      `INSERT INTO contacts (user_id, workspace_id, organization_id, name, phone, country, email, tags, notes, consent_status, consent_source, consent_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW()) RETURNING id`,
+      [
+        req.user.id,
+        workspaceId,
+        organizationId,
+        name || '',
+        phone,
+        country || 'US',
+        email || null,
+        tags || '',
+        notes || '',
+        consent_status || 'unknown',
+        consent_source || 'manual',
+      ]
     );
     res.json({ id: result.rows[0].id });
   } catch (e) {
@@ -63,21 +80,13 @@ router.put('/:id', async (req, res, next) => {
   try {
     const { name, phone, country, email, tags, consent_status, is_unsubscribed, notes } = req.body;
     if (!phone) return res.status(400).json({ error: 'Phone number is required' });
+    await assertContactAccess(req.user, req.params.id, queryOne);
 
-    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
-    if (isAdmin) {
-      await query(
-        `UPDATE contacts SET name = $1, phone = $2, country = $3, email = $4, tags = $5, notes = $6,
-         consent_status = $7, is_unsubscribed = $8, updated_at = NOW() WHERE id = $9`,
-        [name, phone, country, email, tags, notes || '', consent_status, Boolean(is_unsubscribed), req.params.id]
-      );
-    } else {
-      await query(
-        `UPDATE contacts SET name = $1, phone = $2, country = $3, email = $4, tags = $5, notes = $6,
-         consent_status = $7, is_unsubscribed = $8, updated_at = NOW() WHERE id = $9 AND user_id = $10`,
-        [name, phone, country, email, tags, notes || '', consent_status, Boolean(is_unsubscribed), req.params.id, req.user.id]
-      );
-    }
+    await query(
+      `UPDATE contacts SET name = $1, phone = $2, country = $3, email = $4, tags = $5, notes = $6,
+       consent_status = $7, is_unsubscribed = $8, updated_at = NOW() WHERE id = $9`,
+      [name, phone, country, email, tags, notes || '', consent_status, Boolean(is_unsubscribed), req.params.id]
+    );
     res.json({ ok: true });
   } catch (e) {
     next(e);
@@ -86,12 +95,8 @@ router.put('/:id', async (req, res, next) => {
 
 router.delete('/:id', async (req, res, next) => {
   try {
-    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
-    if (isAdmin) {
-      await query('DELETE FROM contacts WHERE id = $1', [req.params.id]);
-    } else {
-      await query('DELETE FROM contacts WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
-    }
+    await assertContactAccess(req.user, req.params.id, queryOne);
+    await query('DELETE FROM contacts WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
   } catch (e) {
     next(e);
@@ -107,6 +112,7 @@ router.post('/save-from-conversation', async (req, res, next) => {
     if (!phoneNorm) return res.status(400).json({ error: 'Phone number is required' });
 
     const userId = req.user.id;
+    const { organizationId, workspaceId } = await resolveTenancy(req.user);
 
     let contact = await queryOne('SELECT * FROM contacts WHERE user_id = $1 AND phone = $2', [userId, phoneNorm]);
     let contactId;
@@ -118,9 +124,9 @@ router.post('/save-from-conversation', async (req, res, next) => {
       contactId = contact.id;
     } else {
       const result = await query(
-        `INSERT INTO contacts (user_id, workspace_id, name, phone, country, email, tags, notes, consent_status, consent_source, consent_date)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'conversation', NOW()) RETURNING id`,
-        [userId, 1, name || phoneNorm, phoneNorm, 'US', email || null, tags || '', notes || '', consent_status || 'unknown']
+        `INSERT INTO contacts (user_id, workspace_id, organization_id, name, phone, country, email, tags, notes, consent_status, consent_source, consent_date)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'conversation', NOW()) RETURNING id`,
+        [userId, workspaceId, organizationId, name || phoneNorm, phoneNorm, 'US', email || null, tags || '', notes || '', consent_status || 'unknown']
       );
       contactId = result.rows[0].id;
     }

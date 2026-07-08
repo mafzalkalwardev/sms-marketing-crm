@@ -16,6 +16,7 @@ export default function AdminConsole() {
     () => api(`/api/admin/users?search=${encodeURIComponent(search)}`),
     [search]
   );
+  const pendingApprovals = useAsync(() => api('/api/admin/pending-approvals'), []);
   const usage = useAsync(() => api('/api/admin/usage'), []);
   const audit = useAsync(() => api('/api/admin/audit-logs?limit=30'), []);
   const branding = useAsync(() => api('/api/admin/branding'), []);
@@ -40,13 +41,63 @@ export default function AdminConsole() {
   const updatePlan = async (user) => {
     const plan = window.prompt('Plan name (e.g. pro, starter):', user.subscription_plan || 'starter');
     if (!plan) return;
+    const msgLimit = window.prompt('Monthly message limit:', String(user.message_limit_monthly || 1000));
+    const numLimit = window.prompt('Number limit:', String(user.number_limit || 2));
     setNotice('');
     try {
       await api(`/api/admin/users/${user.id}/subscription`, {
         method: 'PUT',
-        body: { plan_name: plan },
+        body: {
+          plan_name: plan,
+          message_limit_monthly: msgLimit ? Number(msgLimit) : undefined,
+          number_limit: numLimit ? Number(numLimit) : undefined,
+        },
       });
       setNotice(`Updated plan for ${user.name}.`);
+      users.refresh();
+    } catch (error) {
+      setNotice(error.message);
+    }
+  };
+
+  const createUser = async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setNotice('');
+    try {
+      await api('/api/admin/users', {
+        method: 'POST',
+        body: {
+          name: form.get('name'),
+          email: form.get('email'),
+          password: form.get('password'),
+          phone: form.get('phone') || undefined,
+        },
+      });
+      setNotice('User created.');
+      users.refresh();
+      event.currentTarget.reset();
+    } catch (error) {
+      setNotice(error.message);
+    }
+  };
+
+  const deleteUser = async (user) => {
+    if (!window.confirm(`Deactivate ${user.name}?`)) return;
+    try {
+      await api(`/api/admin/users/${user.id}`, { method: 'DELETE' });
+      setNotice(`${user.name} deactivated.`);
+      users.refresh();
+    } catch (error) {
+      setNotice(error.message);
+    }
+  };
+
+  const approveUser = async (user) => {
+    try {
+      await api(`/api/admin/users/${user.id}/approve`, { method: 'POST' });
+      setNotice(`Approved ${user.name}`);
+      pendingApprovals.refresh();
       users.refresh();
     } catch (error) {
       setNotice(error.message);
@@ -139,7 +190,34 @@ export default function AdminConsole() {
       )}
 
       {tab === 'users' && (
-        <section className="panel">
+        <section className="panel stack">
+          <h3>Create user</h3>
+          <form className="stack" onSubmit={createUser} style={{ marginBottom: '1.5rem' }}>
+            <Input label="Name" name="name" required />
+            <Input label="Email" name="email" type="email" required />
+            <Input label="Phone" name="phone" placeholder="+15551234567" />
+            <Input label="Password" name="password" type="password" required />
+            <Button type="submit">Create user</Button>
+          </form>
+
+          {Boolean(pendingApprovals.data?.length) && (
+            <>
+              <h3>Pending approvals</h3>
+              <table style={{ marginBottom: '1.5rem' }}>
+                <thead><tr><th>Name</th><th>Email</th><th></th></tr></thead>
+                <tbody>
+                  {pendingApprovals.data.map((u) => (
+                    <tr key={u.id}>
+                      <td>{u.name}</td>
+                      <td>{u.email}</td>
+                      <td><Button variant="ghost" onClick={() => approveUser(u)}>Approve</Button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
           <div className="row-actions" style={{ marginBottom: '1rem' }}>
             <Input label="Search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name or email" />
             <Button variant="ghost" onClick={() => users.refresh()}>Refresh</Button>
@@ -148,7 +226,7 @@ export default function AdminConsole() {
           {Boolean(users.data?.length) && (
             <table>
               <thead>
-                <tr><th>Name</th><th>Email</th><th>Role</th><th>Plan</th><th>Status</th><th></th></tr>
+                <tr><th>Name</th><th>Email</th><th>Role</th><th>Plan</th><th>Limits</th><th>Status</th><th></th></tr>
               </thead>
               <tbody>
                 {users.data.map((u) => (
@@ -157,14 +235,16 @@ export default function AdminConsole() {
                     <td>{u.email}</td>
                     <td>{u.role}</td>
                     <td>{u.subscription_plan || '—'}</td>
+                    <td><small>{u.message_limit_monthly || '—'} msgs / {u.number_limit || '—'} nums</small></td>
                     <td><span className={`badge ${u.status}`}>{u.status}</span></td>
                     <td className="row-actions">
-                      {u.role !== 'super_admin' && u.role !== 'admin' && (
+                      {u.role === 'user' && (
                         <>
                           <Button variant="ghost" onClick={() => toggleStatus(u)}>
                             {u.status === 'suspended' ? 'Reactivate' : 'Suspend'}
                           </Button>
                           <Button variant="ghost" onClick={() => updatePlan(u)}>Plan</Button>
+                          <Button variant="ghost" onClick={() => deleteUser(u)}>Delete</Button>
                         </>
                       )}
                     </td>

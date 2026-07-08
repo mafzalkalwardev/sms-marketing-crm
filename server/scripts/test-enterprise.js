@@ -24,6 +24,8 @@ async function request(path, options = {}) {
 
 async function run() {
   const stamp = Date.now();
+  const { query, queryOne, initDatabase } = require('../config/database');
+  await initDatabase();
 
   const adminLogin = await request('/api/auth/login', {
     method: 'POST',
@@ -32,33 +34,40 @@ async function run() {
   if (!adminLogin.data.token) throw new Error('Admin login failed');
   const adminToken = adminLogin.data.token;
 
-  const acmeAdmin = await request('/api/auth/register', {
+  const superLogin = await request('/api/auth/login', {
     method: 'POST',
+    body: { email: 'super_admin@signalmint.local', password: 'password123' },
+  });
+  if (!superLogin.data.token) throw new Error('Super admin login failed');
+
+  const acmeAdmin = await request('/api/super/users', {
+    method: 'POST',
+    token: superLogin.data.token,
     body: {
       name: 'Acme Admin',
       email: `acme-admin-${stamp}@example.com`,
       password: 'password123',
+      role: 'admin',
+      org_name: `Acme Org ${stamp}`,
     },
   });
+  if (!acmeAdmin.ok) throw new Error('Failed to create acme admin');
 
-  const { query, queryOne, initDatabase } = require('../config/database');
-  await initDatabase();
-  await query('UPDATE users SET organization_id = 2, workspace_id = 2, role = $1 WHERE email = $2', [
-    'admin',
-    acmeAdmin.data.user?.email || `acme-admin-${stamp}@example.com`,
+  const acmeAdminRow = await queryOne('SELECT id, organization_id, workspace_id FROM users WHERE email = $1', [
+    `acme-admin-${stamp}@example.com`,
   ]);
 
   const acmeUser = await query(
-    `INSERT INTO users (name, email, password_hash, role, status, organization_id, workspace_id)
-     VALUES ('Acme User', $1, 'x', 'user', 'active', 2, 2) RETURNING id, organization_id`,
-    [`acme-user-${stamp}@example.com`]
+    `INSERT INTO users (name, email, password_hash, phone, role, status, organization_id, workspace_id, managed_by_admin_id, email_verified_at, phone_verified_at)
+     VALUES ('Acme User', $1, 'x', '+15550109999', 'user', 'active', $2, $3, $4, NOW(), NOW()) RETURNING id, organization_id`,
+    [`acme-user-${stamp}@example.com`, acmeAdminRow.organization_id, acmeAdminRow.workspace_id, acmeAdminRow.id]
   ).then((r) => r.rows[0]);
 
   const adminRow = await queryOne('SELECT id, role, organization_id FROM users WHERE email = $1', ['admin@ftsolutions.local']);
   if (adminRow?.role === 'super_admin') {
     throw new Error('Test requires org-scoped admin, not super_admin');
   }
-  if (Number(acmeUser.organization_id) !== 2) {
+  if (Number(acmeUser.organization_id) !== Number(acmeAdminRow.organization_id)) {
     throw new Error(`Acme user setup failed (org=${acmeUser.organization_id})`);
   }
 

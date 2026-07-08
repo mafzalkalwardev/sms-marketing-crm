@@ -122,6 +122,12 @@ async function assertCanSend({ user, to, from, text, allowEnvSender = false }) {
     throw error;
   }
 
+  if (user.subscription_expires_at && new Date(user.subscription_expires_at) < new Date()) {
+    const error = new Error('Subscription has expired. Contact your administrator.');
+    error.status = 403;
+    throw error;
+  }
+
   const limit = Number(user.message_limit_monthly || 0);
   if (limit > 0 && (await monthlyMessageCount(user.id)) >= limit) {
     const error = new Error(`Monthly message limit reached (${limit}).`);
@@ -234,10 +240,15 @@ async function sendTextMessage({
     actorUserId: user.id,
   });
 
+  const { getOrgDeliveryMode } = require('./tenancyService');
+  const organizationDeliveryMode = await getOrgDeliveryMode(user.organization_id || organizationId);
+
   const providerResult = await providerRouter.sendViaResolved(resolved, {
     to: toNorm,
     from: requestedFrom,
     text,
+    organizationDeliveryMode,
+    userStatus: user.status,
   });
 
   const mode = providerResult.mode || 'mock';

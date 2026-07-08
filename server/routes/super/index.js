@@ -1,6 +1,7 @@
 const express = require('express');
 const { authenticate, requireSuperAdmin } = require('../../middleware/auth');
 const adminRoutes = require('./users');
+const organizationsRoutes = require('./organizations');
 const providersRoutes = require('./providers');
 const browserProfilesRoutes = require('./browserProfiles');
 const platformRoutes = require('./platform');
@@ -10,6 +11,7 @@ router.use(authenticate);
 router.use(requireSuperAdmin);
 
 router.use('/users', adminRoutes);
+router.use('/organizations', organizationsRoutes);
 router.use('/providers', providersRoutes);
 router.use('/browser-profiles', browserProfilesRoutes);
 router.use('/', platformRoutes);

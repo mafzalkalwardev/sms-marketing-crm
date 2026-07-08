@@ -90,13 +90,23 @@ for (const providerId of webhookProcessor.API_WEBHOOK_PROVIDERS) {
   app.post(`/webhooks/${providerId}/status`, handler);
 }
 
+app.get('/', (req, res) => {
+  res.json({
+    service: 'SignalMint API',
+    ok: true,
+    version: '3.4.0',
+    health: '/api/health',
+    docs: 'Use the React client for the dialer UI. API routes are under /api/*',
+  });
+});
+
 app.get('/api/health', async (req, res) => {
   try {
     const { queryOne } = require('./config/database');
     await queryOne('SELECT 1 AS ok');
     res.json({
       ok: true,
-      version: '3.3.0',
+      version: '3.4.0',
       queue: process.env.REDIS_URL ? 'bullmq' : 'memory',
     });
   } catch {

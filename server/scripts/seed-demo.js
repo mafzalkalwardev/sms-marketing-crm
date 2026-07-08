@@ -47,19 +47,24 @@ async function upsertUser(email, password, name, role, status, extras = {}) {
   const existing = await queryOne('SELECT * FROM users WHERE email = $1', [email]);
   const hash = bcrypt.hashSync(password, 10);
   const organizationId = extras.organization_id ?? 1;
+  const workspaceId = extras.workspace_id ?? organizationId;
   const managedBy = extras.managed_by_admin_id ?? null;
+  const phone = extras.phone ?? null;
   if (existing) {
     await query(
       `UPDATE users SET name = $1, password_hash = $2, role = $3, status = $4,
-       organization_id = $5, managed_by_admin_id = $6, updated_at = NOW() WHERE id = $7`,
-      [name, hash, role, status, organizationId, managedBy, existing.id]
+       organization_id = $5, workspace_id = $6, managed_by_admin_id = $7, phone = COALESCE($8, phone),
+       email_verified_at = COALESCE(email_verified_at, NOW()),
+       phone_verified_at = COALESCE(phone_verified_at, NOW()),
+       updated_at = NOW() WHERE id = $9`,
+      [name, hash, role, status, organizationId, workspaceId, managedBy, phone, existing.id]
     );
     return existing.id;
   }
   const result = await query(
-    `INSERT INTO users (name, email, password_hash, role, status, organization_id, managed_by_admin_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-    [name, email, hash, role, status, organizationId, managedBy]
+    `INSERT INTO users (name, email, password_hash, phone, role, status, organization_id, workspace_id, managed_by_admin_id, email_verified_at, phone_verified_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()) RETURNING id`,
+    [name, email, hash, phone, role, status, organizationId, workspaceId, managedBy]
   );
   return result.rows[0].id;
 }
@@ -116,12 +121,35 @@ async function seedConversations(userId, contactList) {
 }
 
 async function seed() {
-  const superAdminId = await upsertUser(superAdminEmail, superAdminPassword, superAdminName, 'super_admin', 'active');
-  const adminId = await upsertUser(adminEmail, adminPassword, adminName, 'admin', 'active');
-  const user1Id = await upsertUser(user1Email, user1Password, userName1, 'user', 'active', { managed_by_admin_id: null });
-  const user2Id = await upsertUser(user2Email, user2Password, userName2, 'user', 'active', { managed_by_admin_id: null });
+  const superAdminId = await upsertUser(superAdminEmail, superAdminPassword, superAdminName, 'super_admin', 'active', {
+    organization_id: 1,
+    workspace_id: 1,
+  });
+  const adminId = await upsertUser(adminEmail, adminPassword, adminName, 'admin', 'active', {
+    organization_id: 3,
+    workspace_id: 3,
+    phone: '+15550100001',
+  });
+  const acmeAdminId = await upsertUser('admin@acme.local', adminPassword, 'Acme Admin', 'admin', 'active', {
+    organization_id: 2,
+    workspace_id: 2,
+    phone: '+15550100002',
+  });
+  const user1Id = await upsertUser(user1Email, user1Password, userName1, 'user', 'active', {
+    organization_id: 3,
+    workspace_id: 3,
+    phone: '+15550100011',
+    managed_by_admin_id: adminId,
+  });
+  const user2Id = await upsertUser(user2Email, user2Password, userName2, 'user', 'active', {
+    organization_id: 2,
+    workspace_id: 2,
+    phone: '+15550100012',
+    managed_by_admin_id: acmeAdminId,
+  });
 
-  await query('UPDATE users SET managed_by_admin_id = $1 WHERE id = ANY($2::int[])', [adminId, [user1Id, user2Id]]);
+  await query('UPDATE organizations SET admin_user_id = $1 WHERE id = 3', [adminId]);
+  await query('UPDATE organizations SET admin_user_id = $1 WHERE id = 2', [acmeAdminId]);
 
   await ensureSubscription(superAdminId, 'enterprise');
   await ensureSubscription(adminId, 'enterprise');
@@ -154,9 +182,10 @@ async function seed() {
 
   console.log(`Seeded demo data.
   Super Admin: ${superAdminEmail} / ${superAdminPassword}
-  Admin: ${adminEmail} / ${adminPassword}
-  User1: ${user1Email} / ${user1Password}
-  User2: ${user2Email} / ${user2Password}`);
+  Admin (FT Solutions): ${adminEmail} / ${adminPassword}
+  Admin (Acme): admin@acme.local / ${adminPassword}
+  User1 (FT): ${user1Email} / ${user1Password}
+  User2 (Acme): ${user2Email} / ${user2Password}`);
 }
 
 if (require.main === module) {

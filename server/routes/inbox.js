@@ -4,21 +4,25 @@ const { authenticate } = require('../middleware/auth');
 const { messagePreview } = require('../lib/conversations');
 const { normalizePhone, sendTextMessage } = require('../services/smsService');
 const { sanitizeSendResult } = require('../lib/sanitize');
+const { conversationScopeClause } = require('../lib/orgScope');
+const { resolveTenancy } = require('../services/tenancyService');
 
 const router = express.Router();
 router.use(authenticate);
 
 router.get('/conversations', async (req, res, next) => {
   try {
-    const workspaceId = req.user.workspace_id || 1;
-    const conversations = await queryAll(
-      `SELECT c.*, contacts.name, contacts.phone, contacts.email, contacts.tags, contacts.consent_status, contacts.is_unsubscribed
+    let sql = `SELECT c.*, contacts.name, contacts.phone, contacts.email, contacts.tags, contacts.consent_status, contacts.is_unsubscribed
        FROM conversations c
        JOIN contacts ON contacts.id = c.contact_id
-       WHERE c.workspace_id = $1
-       ORDER BY c.last_message_at DESC NULLS LAST, c.id DESC`,
-      [workspaceId]
-    );
+       WHERE 1=1`;
+    const params = [];
+    const scope = conversationScopeClause(req.user, 'c', 1);
+    sql += scope.clause;
+    params.push(...scope.params);
+    sql += ' ORDER BY c.last_message_at DESC NULLS LAST, c.id DESC';
+
+    const conversations = await queryAll(sql, params);
     const enriched = await Promise.all(conversations.map(async (conversation) => ({
       ...conversation,
       lastMessage: await messagePreview(conversation.id),
@@ -29,13 +33,20 @@ router.get('/conversations', async (req, res, next) => {
   }
 });
 
+async function getScopedConversation(conversationId, actor) {
+  let sql = `SELECT c.*, contacts.name, contacts.phone, contacts.country, contacts.is_unsubscribed
+     FROM conversations c JOIN contacts ON contacts.id = c.contact_id
+     WHERE c.id = $1`;
+  const params = [conversationId];
+  const scope = conversationScopeClause(actor, 'c', 2);
+  sql += scope.clause;
+  params.push(...scope.params);
+  return queryOne(sql, params);
+}
+
 router.get('/conversations/:id/messages', async (req, res, next) => {
   try {
-    const workspaceId = req.user.workspace_id || 1;
-    const conversation = await queryOne(
-      'SELECT * FROM conversations WHERE id = $1 AND workspace_id = $2',
-      [req.params.id, workspaceId]
-    );
+    const conversation = await getScopedConversation(req.params.id, req.user);
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
     await query('UPDATE conversations SET unread_count = 0, updated_at = NOW() WHERE id = $1', [conversation.id]);
     const messages = await queryAll(
@@ -50,18 +61,13 @@ router.get('/conversations/:id/messages', async (req, res, next) => {
 
 router.post('/conversations/:id/reply', async (req, res, next) => {
   try {
-    const workspaceId = req.user.workspace_id || 1;
     const { message, from } = req.body;
     if (!message || !String(message).trim()) return res.status(400).json({ error: 'Message is required' });
-    const conversation = await queryOne(
-      `SELECT c.*, contacts.phone, contacts.country, contacts.is_unsubscribed
-       FROM conversations c JOIN contacts ON contacts.id = c.contact_id
-       WHERE c.id = $1 AND c.workspace_id = $2`,
-      [req.params.id, workspaceId]
-    );
+    const conversation = await getScopedConversation(req.params.id, req.user);
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
     if (conversation.is_unsubscribed) return res.status(403).json({ error: 'This contact is unsubscribed.' });
 
+    const { workspaceId } = await resolveTenancy(req.user);
     const result = await sendTextMessage({
       user: req.user,
       to: conversation.phone,

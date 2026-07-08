@@ -2,30 +2,45 @@ const express = require('express');
 const { query, queryOne, queryAll } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
 const { normalizePhone, isValidPhone } = require('../lib/sms');
+const { dataUserIdClause } = require('../lib/orgScope');
+const { assertUserInOrg } = require('../services/tenancyService');
+const { resolveTenancy } = require('../services/tenancyService');
 
 const router = express.Router();
 router.use(authenticate);
 
 router.get('/', async (req, res, next) => {
   try {
-    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
-    let numbers;
-    if (isAdmin) {
+    let sql = `SELECT id, user_id, workspace_id, phone_number, country, type, label, status, is_default, created_at, updated_at
+       FROM numbers WHERE 1=1`;
+    const params = [];
+    let idx = 1;
+
+    if (req.user.role === 'admin' || req.user.role === 'super_admin') {
       const { user_id } = req.query;
-      numbers = user_id
-        ? await queryAll(
-            'SELECT id, user_id, workspace_id, phone_number, country, type, label, status, is_default, created_at, updated_at FROM numbers WHERE user_id = $1 ORDER BY is_default DESC, id DESC',
-            [user_id]
-          )
-        : await queryAll(
-            'SELECT id, user_id, workspace_id, phone_number, country, type, label, status, is_default, created_at, updated_at FROM numbers ORDER BY is_default DESC, id DESC'
-          );
+      if (user_id && req.user.role === 'admin') {
+        await assertUserInOrg(req.user, user_id);
+        sql += ` AND user_id = $${idx}`;
+        params.push(user_id);
+        idx += 1;
+      } else if (user_id && req.user.role === 'super_admin') {
+        sql += ` AND user_id = $${idx}`;
+        params.push(user_id);
+        idx += 1;
+      } else {
+        const scope = dataUserIdClause(req.user, 'user_id', idx);
+        sql += scope.clause;
+        params.push(...scope.params);
+        idx = scope.nextIdx;
+      }
     } else {
-      numbers = await queryAll(
-        'SELECT id, user_id, workspace_id, phone_number, country, type, label, status, is_default, created_at, updated_at FROM numbers WHERE user_id = $1 ORDER BY is_default DESC, id DESC',
-        [req.user.id]
-      );
+      sql += ` AND user_id = $${idx}`;
+      params.push(req.user.id);
+      idx += 1;
     }
+
+    sql += ' ORDER BY is_default DESC, id DESC';
+    const numbers = await queryAll(sql, params);
     res.json(numbers);
   } catch (e) {
     next(e);
@@ -50,10 +65,11 @@ router.post('/', async (req, res, next) => {
       await query('UPDATE numbers SET is_default = FALSE WHERE user_id = $1', [req.user.id]);
     }
 
+    const { organizationId, workspaceId } = await resolveTenancy(req.user);
     const result = await query(
-      `INSERT INTO numbers (user_id, workspace_id, phone_number, country, type, label, provider, status, is_default)
-       VALUES ($1, $2, $3, $4, $5, $6, 'mock', 'active', $7) RETURNING id`,
-      [req.user.id, 1, phone, country || 'US', type || 'long-code', label || '', Boolean(is_default)]
+      `INSERT INTO numbers (user_id, workspace_id, organization_id, phone_number, country, type, label, provider, status, is_default)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'mock', 'active', $8) RETURNING id`,
+      [req.user.id, workspaceId, organizationId, phone, country || 'US', type || 'long-code', label || '', Boolean(is_default)]
     );
     res.json({ id: result.rows[0].id });
   } catch (e) {
@@ -61,14 +77,27 @@ router.post('/', async (req, res, next) => {
   }
 });
 
+async function assertNumberAccess(actor, number) {
+  if (!number) {
+    const error = new Error('Number not found');
+    error.status = 404;
+    throw error;
+  }
+  if (actor.role === 'user' && number.user_id !== actor.id) {
+    const error = new Error('Forbidden');
+    error.status = 403;
+    throw error;
+  }
+  if (actor.role === 'admin') {
+    await assertUserInOrg(actor, number.user_id);
+  }
+}
+
 router.put('/:id', async (req, res, next) => {
   try {
     const { label, status, is_default, phone_number } = req.body;
     const number = await queryOne('SELECT * FROM numbers WHERE id = $1', [req.params.id]);
-    if (!number) return res.status(404).json({ error: 'Number not found' });
-
-    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
-    if (!isAdmin && number.user_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+    await assertNumberAccess(req.user, number);
 
     const phone = normalizePhone(phone_number || number.phone_number);
     if (!isValidPhone(phone)) return res.status(400).json({ error: 'Phone number must be valid E.164 format' });
@@ -98,11 +127,7 @@ router.put('/:id', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
   try {
     const number = await queryOne('SELECT * FROM numbers WHERE id = $1', [req.params.id]);
-    if (!number) return res.status(404).json({ error: 'Number not found' });
-
-    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
-    if (!isAdmin && number.user_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
-
+    await assertNumberAccess(req.user, number);
     await query('DELETE FROM numbers WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
   } catch (e) {
@@ -113,8 +138,8 @@ router.delete('/:id', async (req, res, next) => {
 router.post('/:id/set-default', async (req, res, next) => {
   try {
     const number = await queryOne('SELECT * FROM numbers WHERE id = $1', [req.params.id]);
-    if (!number) return res.status(404).json({ error: 'Number not found' });
-    if (number.user_id !== req.user.id && req.user.role !== 'admin' && req.user.role !== 'super_admin') {
+    await assertNumberAccess(req.user, number);
+    if (number.user_id !== req.user.id && req.user.role === 'user') {
       return res.status(403).json({ error: 'Forbidden' });
     }
 

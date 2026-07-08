@@ -21,6 +21,8 @@ export default function SuperAdminConsole() {
   const catalog = useAsync(() => api('/api/super/providers/catalog'), []);
   const providers = useAsync(() => api('/api/super/providers'), []);
   const users = useAsync(() => api('/api/super/users'), []);
+  const pendingApprovals = useAsync(() => api('/api/super/users/pending-approvals'), []);
+  const organizations = useAsync(() => api('/api/super/organizations'), []);
   const browserProfiles = useAsync(() => api('/api/super/browser-profiles'), []);
   const healthDetail = useAsync(() => api('/api/super/health/detail'), []);
   const webhookLogs = useAsync(() => api('/api/super/webhook-logs?limit=25'), []);
@@ -193,6 +195,68 @@ export default function SuperAdminConsole() {
       body: { status: user.status === 'suspended' ? 'active' : 'suspended', reason: 'Super admin action' },
     });
     users.refresh();
+  };
+
+  const approveUser = async (user) => {
+    const orgId = window.prompt('Organization ID (optional if invite code used):', user.organization_id || '');
+    const adminId = window.prompt('Managing admin user ID (optional):', user.managed_by_admin_id || '');
+    await api(`/api/super/users/${user.id}/approve`, {
+      method: 'POST',
+      body: {
+        organization_id: orgId ? Number(orgId) : undefined,
+        managed_by_admin_id: adminId ? Number(adminId) : undefined,
+      },
+    });
+    setNotice(`Approved ${user.name}`);
+    users.refresh();
+    pendingApprovals.refresh();
+  };
+
+  const createAdmin = async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      await api('/api/super/users', {
+        method: 'POST',
+        body: {
+          name: form.get('name'),
+          email: form.get('email'),
+          password: form.get('password'),
+          role: 'admin',
+          org_name: form.get('org_name'),
+        },
+      });
+      setNotice('Admin and organization created.');
+      users.refresh();
+      organizations.refresh();
+      event.currentTarget.reset();
+    } catch (error) {
+      setNotice(error.message);
+    }
+  };
+
+  const impersonateUser = async (user) => {
+    const data = await api(`/api/super/users/${user.id}/impersonate`, { method: 'POST' });
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify({ ...data.user, impersonated_by: data.impersonated_by }));
+    window.location.reload();
+  };
+
+  const deleteUser = async (user) => {
+    if (!window.confirm(`Deactivate ${user.name}?`)) return;
+    await api(`/api/super/users/${user.id}`, { method: 'DELETE' });
+    users.refresh();
+    setNotice(`${user.name} deactivated.`);
+  };
+
+  const toggleOrgLive = async (org) => {
+    const next = org.delivery_mode === 'live' ? 'sandbox' : 'live';
+    await api(`/api/super/organizations/${org.id}`, {
+      method: 'PUT',
+      body: { delivery_mode: next },
+    });
+    organizations.refresh();
+    setNotice(`Org ${org.name} set to ${next}.`);
   };
 
   return (
@@ -476,23 +540,83 @@ export default function SuperAdminConsole() {
       </section>
 
       <section className="panel">
+        <h3>Pending approvals</h3>
+        {!pendingApprovals.data?.length && <p className="muted-copy">No users awaiting approval.</p>}
+        {Boolean(pendingApprovals.data?.length) && (
+          <table>
+            <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Org</th><th></th></tr></thead>
+            <tbody>
+              {pendingApprovals.data.map((u) => (
+                <tr key={u.id}>
+                  <td>{u.name}</td>
+                  <td>{u.email}</td>
+                  <td>{u.phone || '—'}</td>
+                  <td>{u.organization_id || '—'}</td>
+                  <td><Button variant="ghost" onClick={() => approveUser(u)}>Approve</Button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="panel stack">
+        <h3>Create admin (+ new organization)</h3>
+        <form className="stack" onSubmit={createAdmin}>
+          <Input label="Admin name" name="name" required />
+          <Input label="Email" name="email" type="email" required />
+          <Input label="Password" name="password" type="password" required />
+          <Input label="Organization name" name="org_name" required />
+          <Button type="submit">Create admin</Button>
+        </form>
+      </section>
+
+      <section className="panel">
+        <h3>Organizations</h3>
+        {!organizations.data?.organizations?.length && <p>Loading…</p>}
+        {Boolean(organizations.data?.organizations?.length) && (
+          <table>
+            <thead><tr><th>Name</th><th>Users</th><th>Delivery</th><th>Admin</th><th></th></tr></thead>
+            <tbody>
+              {organizations.data.organizations.map((org) => (
+                <tr key={org.id}>
+                  <td>{org.brand_name || org.name}</td>
+                  <td>{org.user_count}</td>
+                  <td><span className={`badge ${org.delivery_mode === 'live' ? 'active' : 'warning'}`}>{org.delivery_mode}</span></td>
+                  <td>{org.admin_name || '—'}</td>
+                  <td><Button variant="ghost" onClick={() => toggleOrgLive(org)}>Toggle live</Button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="panel">
         <h3>Platform users</h3>
         {!users.data?.length && <p>Loading users…</p>}
         {Boolean(users.data?.length) && (
           <table>
-            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Org</th><th>Status</th><th></th></tr></thead>
             <tbody>
               {users.data.map((u) => (
                 <tr key={u.id}>
                   <td>{u.name}</td>
                   <td>{u.email}</td>
                   <td>{u.role}</td>
+                  <td>{u.organization_id || '—'}</td>
                   <td><span className={`badge ${u.status}`}>{u.status}</span></td>
-                  <td>
+                  <td className="row-actions">
                     {u.role !== 'super_admin' && (
-                      <Button variant="ghost" onClick={() => suspendUser(u)}>
-                        {u.status === 'suspended' ? 'Reactivate' : 'Suspend'}
-                      </Button>
+                      <>
+                        <Button variant="ghost" onClick={() => suspendUser(u)}>
+                          {u.status === 'suspended' ? 'Reactivate' : 'Suspend'}
+                        </Button>
+                        {u.status === 'active' && u.role === 'user' && (
+                          <Button variant="ghost" onClick={() => impersonateUser(u)}>Login as</Button>
+                        )}
+                        <Button variant="ghost" onClick={() => deleteUser(u)}>Delete</Button>
+                      </>
                     )}
                   </td>
                 </tr>

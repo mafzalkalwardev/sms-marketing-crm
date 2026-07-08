@@ -147,8 +147,8 @@ async function resolveForNumber(fromNumber) {
   return { providerId: null, providerKey: 'mock', adapter: mockProvider, credentials: {}, adapterType: 'api' };
 }
 
-async function sendViaResolved(resolved, { to, from, text }) {
-  if (shouldUseMockSend(resolved)) {
+async function sendViaResolved(resolved, { to, from, text, organizationDeliveryMode, userStatus } = {}) {
+  if (shouldUseMockSend(resolved, { organizationDeliveryMode, userStatus })) {
     const mock = await mockProvider.sendSms({ to, from, text, provider: resolved.providerKey });
     return mock;
   }

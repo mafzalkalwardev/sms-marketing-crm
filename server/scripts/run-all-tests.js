@@ -12,12 +12,14 @@ const ALWAYS = [
   'test:campaign-fanout',
   'test:live-readiness',
   'test:webhook-replay',
+  'test:auth-otp',
 ];
 
 const NEEDS_API = [
   'test:compliance',
   'test:deploy-readiness',
   'test:enterprise',
+  'test:governance',
 ];
 
 const OPTIONAL = [

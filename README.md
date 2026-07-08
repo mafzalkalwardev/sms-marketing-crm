@@ -2,28 +2,43 @@
 
 White-label business texting platform with an **opaque multi-provider backend**. Customers use the SignalMint dialer UI only — Vonage, Twilio, Telnyx, Bandwidth, Zoom, Google Voice (browser automation), RingoX, and 3CX run behind the scenes under Super Admin control.
 
+## Live demo (no Docker required)
+
+Test the full platform online — no local Postgres or Docker needed.
+
+| Service | URL |
+|---------|-----|
+| **App (login here)** | https://client-app-alpha-livid.vercel.app |
+| **API** | https://signalmint-api.vercel.app |
+| **Health** | https://signalmint-api.vercel.app/api/health |
+| **API root** | https://signalmint-api.vercel.app/ |
+
+Open the **frontend URL** to sign in. The API URL is for health checks and integrations only (visiting `/` in a browser shows JSON, not the app).
+
+### Demo logins (production, after seed)
+
+| Role | Email | Password | What you can do |
+|------|-------|----------|-----------------|
+| Super Admin | `super_admin@signalmint.local` | `password123` | All orgs, providers, impersonation, approvals |
+| Admin (FT Solutions) | `admin@ftsolutions.local` | `password123` | Manage own users, branding, API keys |
+| Admin (Acme) | `admin@acme.local` | `password123` | Separate org — cannot see FT users |
+| User (FT) | `user1@demo.local` | `password123` | Inbox, dialpad, contacts |
+| User (Acme) | `user2@demo.local` | `password123` | Inbox in Acme org only |
+
+## What's new in v3.5 — Governance & live-ready auth
+
+- **OTP signup** — email + SMS verification codes, then admin approval before account activates
+- **Role hierarchy** — Super Admin → Admin (per org) → User with strict data isolation
+- **Super Admin powers** — create/suspend/delete admins & users, approve signups, **Login as** any user
+- **Admin powers** — create/delete users in own org only; cannot see other admins' teams
+- **JWT sessions** — server-side revocation on suspend; logout endpoint
+- **Per-org delivery mode** — Super Admin toggles sandbox/live per organization
+- **API root** — `GET /` returns service info (fixes confusing "Cannot GET /" error)
+
 ## What's new in v3.4
 
 - **Inbox polling** — conversations refresh every 12s without manual reload
-- **TONY AI Agent** moved to standalone repo: `D:\TONY AI AGENT` (open in Cursor separately)
-
-## What's new in v3.3
-
-**Milestone complete** — all 7 roadmap phases shipped in sandbox mode.
-
-- **Phase 6** — BullMQ campaign fan-out, progress UI, dead-letter retry
-- **Phase 7** — Multi-org tenancy, white-label branding, API keys (`/api/v1`), SOC2 audit CSV export, message retention
-- **`npm run test:all`** — runs the full automated verification suite
-- See [.planning/MILESTONE-v3.3-COMPLETE.md](.planning/MILESTONE-v3.3-COMPLETE.md) for the full summary
-
-## What's new in v3.2
-
-- **Phase 4 UX** — Compliance page, reports date filters, mobile inbox, full nav wiring
-- **Phase 5 Ops** — Deploy readiness test, secrets runbook, `RENDER_EXTERNAL_URL` webhook fallback
-- **Full local stack** — `docker compose` runs Postgres + automation-worker together
-- **Render blueprint** — API + worker + Postgres with health checks (`render.yaml`)
-
-Prior v3.1: PostgreSQL, provider router, Super Admin, Twilio, browser lane scaffold, CI.
+- **TONY AI Agent** moved to standalone repo: `D:\TONY AI AGENT`
 
 ## Architecture
 
@@ -33,204 +48,118 @@ React dialer UI  →  Node API (PostgreSQL)  →  Provider router
                                               └─ automation-worker (browser lane)
 ```
 
-## Demo logins (after seed)
+## Public signup flow
 
-| Role | Email | Password |
-|------|-------|----------|
-| Super Admin | `super_admin@signalmint.local` | `password123` |
-| Admin | `admin@ftsolutions.local` | `password123` |
-| User | `user1@demo.local` | `password123` |
+1. **Create account** — name, email, phone (E.164), password; optional org invite code
+2. **Verify email** — 6-digit OTP (in production: email; dev: server console when `OTP_LOG_TO_CONSOLE=true`)
+3. **Verify phone** — SMS OTP
+4. **Pending approval** — Admin or Super Admin approves in Team admin / Platform console
+5. **Sign in** — account becomes `active`
 
-## Quick start (local)
+Admins can also **create users directly** (skips OTP) from Team admin → Users.
 
-### 1. PostgreSQL + worker (recommended)
+## Super Admin quick guide
 
-```powershell
-Set-Location "D:\SMS Marketing App"
-docker compose up -d
+1. Log in as `super_admin@signalmint.local`
+2. Open **Platform** in the sidebar
+3. **Pending approvals** — approve new signups
+4. **Create admin** — provisions a new organization automatically
+5. **Organizations** — toggle per-org sandbox/live delivery
+6. **Login as** — impersonate any active user to see their inbox
+
+## Admin quick guide
+
+1. Log in as `admin@ftsolutions.local`
+2. Open **Team admin**
+3. **Create user** — adds a user to your org (you are their manager)
+4. **Pending approvals** — approve signups assigned to your org
+5. **Branding** — white-label name and colors for your org
+
+## Integration API
+
+```http
+Authorization: Bearer smk_…
+GET  /api/v1/contacts
+POST /api/v1/messages/send  { "to", "from", "message" }
 ```
 
-Starts Postgres on **5434**, Redis on **6380**, and automation-worker on **5055**.
+Create keys in **Team admin → API keys**.
 
-### 2. Backend
+## Local development (optional)
+
+If you have Docker and disk space:
 
 ```powershell
-Set-Location "D:\SMS Marketing App\server"
+docker compose up -d   # Postgres :5434, Redis :6380, worker :5055
+cd server
 Copy-Item .env.example .env
-# Edit .env — set JWT_SECRET, DATABASE_URL
-npm install
-npm run dev
+npm install && npm run dev
 ```
-
-Default `DATABASE_URL` (Docker maps host port **5434** to avoid conflicts with other local Postgres):
-
-```text
-postgresql://signalmint:signalmint@localhost:5434/signalmint
-```
-
-On first boot the API runs migrations and auto-seeds demo users when `AUTO_SEED=true`.
-
-### 3. Frontend
 
 ```powershell
-Set-Location "D:\SMS Marketing App\client-app"
-npm install
-npm start
+cd client-app
+npm install && npm start
 ```
 
-Open http://localhost:3000
+Without Docker, use the **live URLs** above for testing.
 
-### 4. Smoke test
+## Environment variables (API)
+
+See `server/.env.example`. Key production vars:
+
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | Neon / Postgres connection |
+| `JWT_SECRET` | Auth tokens |
+| `MASTER_ENCRYPTION_KEY` | Encrypt provider credentials |
+| `AUTO_SEED=true` | Demo users on first boot |
+| `OTP_LOG_TO_CONSOLE=true` | Log OTP codes to Vercel logs (for testing without email SMTP) |
+| `REQUIRE_ADMIN_APPROVAL=true` | Signups need admin approval (default) |
+| `SMS_SANDBOX_MODE=true` | Mock SMS delivery (safe for testing) |
+| `PUBLIC_BACKEND_URL` | Webhook base URL |
+
+## Deploy to Vercel
+
+### API (`server/`)
 
 ```powershell
-Set-Location "D:\SMS Marketing App\server"
+cd server
+vercel link
+vercel deploy --prod
+```
+
+Set env vars in Vercel dashboard for `signalmint-api`. Migrations run automatically on boot.
+
+### Frontend (`client-app/`)
+
+```powershell
+cd client-app
+vercel link
+vercel deploy --prod
+```
+
+Set `REACT_APP_API_URL=https://signalmint-api.vercel.app`
+
+## Verification
+
+```powershell
+cd server
 npm run test:all
 npm run smoke
 ```
 
-Full test matrix: [TESTING.md](./TESTING.md)
-
-## Environment variables
-
-See `server/.env.example` for full list. Key vars:
-
-| Variable | Purpose |
-|----------|---------|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `JWT_SECRET` | Auth tokens |
-| `MASTER_ENCRYPTION_KEY` | Encrypt provider credentials at rest |
-| `VONAGE_MOCK_MODE` | `true` for local mock SMS (default) |
-| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` | Twilio bootstrap |
-| `PUBLIC_BACKEND_URL` | Webhook base URL for providers |
-| `AUTOMATION_WORKER_URL` | Browser lane Python worker |
-
-## Provider webhooks
-
-Configure at your provider (Super Admin console shows URLs):
-
-```text
-POST /webhooks/vonage/inbound
-POST /webhooks/vonage/status
-POST /webhooks/twilio/inbound
-POST /webhooks/twilio/status
-```
-
-## Browser automation worker (Lane B)
-
-For Google Voice and advertiser portals without APIs:
-
-```powershell
-Set-Location "D:\SMS Marketing App\automation-worker"
-pip install -r requirements.txt
-uvicorn main:app --port 5055
-```
-
-Set `AUTOMATION_WORKER_URL=http://localhost:5055` in server `.env`.
-
-## Deploy live
-
-### Live URLs (production)
-
-| Service | URL |
-|---------|-----|
-| **Frontend** | https://client-app-alpha-livid.vercel.app |
-| **API** | https://signalmint-api.vercel.app |
-| **Health** | https://signalmint-api.vercel.app/api/health |
-
-Demo logins work on production after seed (`AUTO_SEED=true` on first boot).
-
-### Enable real live SMS (not sandbox)
-
-Production is currently in **sandbox mode** — messages are stored in the app but **not delivered to real phones** until you configure a live provider:
-
-1. Open **Super Admin** → check the **Delivery mode** banner (shows `sandbox` or `live`)
-2. In Vercel project `signalmint-api`, set environment variables:
-   - `VONAGE_API_KEY` and `VONAGE_API_SECRET` (or Twilio `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN`)
-   - `VONAGE_DEFAULT_FROM` = your approved sender number (E.164)
-   - `VONAGE_MOCK_MODE=false` (disables sandbox)
-   - `PUBLIC_BACKEND_URL=https://signalmint-api.vercel.app` (for delivery webhooks)
-3. Redeploy the API, then send a **live test SMS** from Super Admin
-
-Supported dialer backends (Super Admin → Add dialer backend):
-
-| Lane | Dialers |
-|------|---------|
-| **API** | Vonage, Twilio, Telnyx, Bandwidth, Zoom Phone, RingoX, 3CX |
-| **Browser** | Google Voice, Advertiser web dialers (via automation worker) |
-
-Customers never see which backend is used — they only see Sent / Delivered / Failed in the dialer UI.
-
-### Backend + PostgreSQL on Vercel + Neon
-
-The API is deployed as a Vercel serverless Node project (`server/`) with Neon Postgres via the Vercel Marketplace integration.
-
-```powershell
-Set-Location "D:\SMS Marketing App\server"
-vercel link
-vercel integration add neon
-vercel deploy --prod
-```
-
-Required env vars: `JWT_SECRET`, `MASTER_ENCRYPTION_KEY`, `DATABASE_SSL=true`, `VONAGE_MOCK_MODE`, `PUBLIC_BACKEND_URL`.
-
-### Backend + PostgreSQL + worker on Render
-
-1. Push this repo to GitHub
-2. [Render Dashboard](https://dashboard.render.com) → New Blueprint → connect repo
-3. Applies `render.yaml`: `signalmint-api`, `signalmint-worker` (Docker + profile disk), `signalmint-db`
-4. `WORKER_SERVICE_TOKEN` syncs API ↔ worker automatically
-5. `RENDER_EXTERNAL_URL` is used for webhooks when `PUBLIC_BACKEND_URL` is unset
-6. Set `VONAGE_*` / `TWILIO_*` and `SMS_SANDBOX_MODE=false` for live SMS
-
-### Backend + PostgreSQL on Render (API only)
-
-1. Push this repo to GitHub
-2. [Render Dashboard](https://dashboard.render.com) → New Blueprint → connect repo
-3. Uses `render.yaml` (API + free Postgres)
-4. Set `VONAGE_*` / `TWILIO_*` in Render env
-
-### Frontend on Vercel
-
-1. Import repo in [Vercel](https://vercel.com)
-2. Root directory: `client-app`
-3. Environment: `REACT_APP_API_URL=https://signalmint-api.vercel.app`
-4. Deploy
-
-### GitHub Actions
-
-CI runs on push to `main` / `vonage-live-sms-integration` — Postgres service, migrate, seed, smoke test, frontend build.
-
-## Project structure
-
-```text
-server/              Node API, PostgreSQL, provider adapters
-client-app/          React dialer UI
-automation-worker/   Python browser automation (Lane B)
-PRD.md               Product requirements v3.1
-docker-compose.yml   Local PostgreSQL
-render.yaml          Render deployment
-.github/workflows/   CI pipeline
-```
+CI runs on push to `main`.
 
 ## Roles
 
 | Role | Can see providers? | Capabilities |
 |------|-------------------|--------------|
 | **User** | No | Inbox, dialpad, contacts, assigned numbers |
-| **Admin** | No | Manage org users, numbers, reports |
-| **Super Admin** | Yes | All providers, suspend anyone, test SMS |
-
-## Compliance
-
-- STOP/unsubscribe auto-detection
-- Suppression list blocks future sends
-- US 10DLC / UK sender rules — configure per provider account
+| **Admin** | No | Manage org users, numbers, reports, branding |
+| **Super Admin** | Yes | All providers, all orgs, impersonation, approvals |
 
 ## Docs
 
-- [PRD.md](./PRD.md) — full product spec
 - [TESTING.md](./TESTING.md) — manual + automated tests
-- [AUDIT.md](./AUDIT.md) — platform snapshot (v3.3)
-- [.planning/MODULES.md](./.planning/MODULES.md) — module architecture
-- [.planning/MILESTONE-v3.3-COMPLETE.md](./.planning/MILESTONE-v3.3-COMPLETE.md) — milestone summary
-- [.planning/SECRETS-RUNBOOK.md](./.planning/SECRETS-RUNBOOK.md) — credential rotation
+- [PRD.md](./PRD.md) — full product spec
+- [.planning/SECRETS-RUNBOOK.md](.planning/SECRETS-RUNBOOK.md) — credential rotation

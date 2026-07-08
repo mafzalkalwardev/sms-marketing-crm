@@ -16,6 +16,7 @@ import AdminConsole from './pages/AdminConsole';
 import SuperAdminConsole from './pages/SuperAdminConsole';
 import Login from './pages/Login';
 import Logo from './components/Logo';
+import Button from './components/Button';
 
 const pages = {
   messages: Inbox,
@@ -32,7 +33,7 @@ const pages = {
 };
 
 export default function App() {
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, endImpersonation } = useAuth();
   const branding = useBranding();
   const [page, setPage] = useState('messages');
 
@@ -48,6 +49,12 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      {user.impersonated_by && (
+        <div className="alert warn impersonation-banner">
+          <span>Viewing as <strong>{user.name}</strong> ({user.email})</span>
+          <Button variant="ghost" onClick={() => endImpersonation().catch(() => logout())}>Exit impersonation</Button>
+        </div>
+      )}
       <Sidebar page={page} setPage={setPage} user={user} logout={logout} />
       <main className="workspace">
         <Page setPage={setPage} />

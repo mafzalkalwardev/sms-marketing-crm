@@ -18,6 +18,8 @@
     "test:campaign-fanout": "node scripts/test-campaign-fanout.js",
     "test:campaign-bullmq": "node scripts/test-campaign-bullmq.js",
     "test:enterprise": "node scripts/test-enterprise.js",
+    "test:governance": "node scripts/test-governance.js",
+    "test:auth-otp": "node scripts/test-auth-otp.js",
     "campaign-worker": "node scripts/campaign-worker.js",
     "test:load": "node scripts/load-test.js",
     "test:load:stress": "node scripts/load-test.js 1000",

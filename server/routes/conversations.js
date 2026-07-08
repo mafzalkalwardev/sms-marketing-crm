@@ -5,21 +5,24 @@ const { sendTextMessage, normalizePhone, isValidPhone } = require('../services/s
 const { messagePreview } = require('../lib/conversations');
 const { sanitizeSendResult, sanitizeMessages } = require('../lib/sanitize');
 const { CONVERSATION_STATUSES, transitionConversation } = require('../services/conversationStateService');
+const { conversationScopeClause } = require('../lib/orgScope');
+const { resolveTenancy } = require('../services/tenancyService');
 
 const router = express.Router();
 
-async function conversationList(userId, isAdmin) {
-  const sql = isAdmin
-    ? `SELECT c.*, contacts.name, contacts.phone, contacts.email, contacts.tags, contacts.consent_status, contacts.is_unsubscribed
-       FROM conversations c
-       JOIN contacts ON contacts.id = c.contact_id
-       ORDER BY c.last_message_at DESC NULLS LAST, c.id DESC`
-    : `SELECT c.*, contacts.name, contacts.phone, contacts.email, contacts.tags, contacts.consent_status, contacts.is_unsubscribed
-       FROM conversations c
-       JOIN contacts ON contacts.id = c.contact_id
-       WHERE c.user_id = $1
-       ORDER BY c.last_message_at DESC NULLS LAST, c.id DESC`;
-  const rows = isAdmin ? await queryAll(sql) : await queryAll(sql, [userId]);
+async function conversationList(actor) {
+  let sql = `SELECT c.*, contacts.name, contacts.phone, contacts.email, contacts.tags, contacts.consent_status, contacts.is_unsubscribed
+     FROM conversations c
+     JOIN contacts ON contacts.id = c.contact_id
+     WHERE 1=1`;
+  const params = [];
+  let idx = 1;
+  const scope = conversationScopeClause(actor, 'c', idx);
+  sql += scope.clause;
+  params.push(...scope.params);
+  sql += ' ORDER BY c.last_message_at DESC NULLS LAST, c.id DESC';
+
+  const rows = await queryAll(sql, params);
   return Promise.all(rows.map(async (conversation) => ({
     ...conversation,
     lastMessage: await messagePreview(conversation.id),
@@ -28,8 +31,7 @@ async function conversationList(userId, isAdmin) {
 
 router.get('/', authenticate, async (req, res, next) => {
   try {
-    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
-    res.json(await conversationList(req.user.id, isAdmin));
+    res.json(await conversationList(req.user));
   } catch (e) {
     next(e);
   }
@@ -37,8 +39,7 @@ router.get('/', authenticate, async (req, res, next) => {
 
 router.get('/:id', authenticate, async (req, res, next) => {
   try {
-    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
-    const conversations = await conversationList(req.user.id, isAdmin);
+    const conversations = await conversationList(req.user);
     const conversation = conversations.find((row) => row.id === Number(req.params.id));
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
     res.json(conversation);
@@ -49,8 +50,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
 
 router.get('/:id/messages', authenticate, async (req, res, next) => {
   try {
-    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
-    const conversations = await conversationList(req.user.id, isAdmin);
+    const conversations = await conversationList(req.user);
     const conversation = conversations.find((row) => row.id === Number(req.params.id));
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
     await query('UPDATE conversations SET unread_count = 0, updated_at = NOW() WHERE id = $1', [conversation.id]);
@@ -71,14 +71,14 @@ router.post('/start', authenticate, async (req, res, next) => {
     if (!isValidPhone(phoneNorm)) return res.status(400).json({ error: 'Phone must be valid E.164 format' });
 
     const userId = req.user.id;
-    const workspaceId = 1;
+    const { organizationId, workspaceId } = await resolveTenancy(req.user);
 
     let contact = await queryOne('SELECT * FROM contacts WHERE user_id = $1 AND phone = $2', [userId, phoneNorm]);
     if (!contact) {
       const result = await query(
-        `INSERT INTO contacts (user_id, workspace_id, name, phone, country, consent_status, consent_source, consent_date)
-         VALUES ($1, $2, $3, $4, $5, 'unknown', 'manual', NOW()) RETURNING *`,
-        [userId, workspaceId, name || phoneNorm, phoneNorm, 'US']
+        `INSERT INTO contacts (user_id, workspace_id, organization_id, name, phone, country, consent_status, consent_source, consent_date)
+         VALUES ($1, $2, $3, $4, $5, $6, 'unknown', 'manual', NOW()) RETURNING *`,
+        [userId, workspaceId, organizationId, name || phoneNorm, phoneNorm, 'US']
       );
       contact = result.rows[0];
     }
@@ -89,9 +89,9 @@ router.post('/start', authenticate, async (req, res, next) => {
     );
     if (!conversation) {
       const result = await query(
-        `INSERT INTO conversations (user_id, workspace_id, contact_id, phone, status, unread_count, last_message_at)
-         VALUES ($1, $2, $3, $4, 'open', 0, NOW()) RETURNING *`,
-        [userId, workspaceId, contact.id, phoneNorm]
+        `INSERT INTO conversations (user_id, workspace_id, organization_id, contact_id, phone, status, unread_count, last_message_at)
+         VALUES ($1, $2, $3, $4, $5, 'open', 0, NOW()) RETURNING *`,
+        [userId, workspaceId, organizationId, contact.id, phoneNorm]
       );
       conversation = result.rows[0];
     }
@@ -105,6 +105,7 @@ router.post('/start', authenticate, async (req, res, next) => {
         message,
         contactName: name,
         workspaceId,
+        organizationId,
       });
       conversation = await queryOne('SELECT * FROM conversations WHERE id = $1', [sendResult.conversation.id]);
     }
@@ -121,8 +122,7 @@ router.post('/start', authenticate, async (req, res, next) => {
 
 router.post('/:id/messages', authenticate, async (req, res, next) => {
   try {
-    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
-    const conversations = await conversationList(req.user.id, isAdmin);
+    const conversations = await conversationList(req.user);
     const conversation = conversations.find((row) => row.id === Number(req.params.id));
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
     if (conversation.is_unsubscribed) return res.status(403).json({ error: 'This contact is unsubscribed.' });
@@ -130,13 +130,14 @@ router.post('/:id/messages', authenticate, async (req, res, next) => {
     const message = String(req.body.message || '').trim();
     if (!message) return res.status(400).json({ error: 'Message is required' });
 
+    const { workspaceId } = await resolveTenancy(req.user);
     const result = await sendTextMessage({
       user: req.user,
       to: conversation.phone,
       from: req.body.from,
       message,
       contactName: conversation.name,
-      workspaceId: 1,
+      workspaceId,
     });
 
     res.status(result.ok ? 200 : 502).json(sanitizeSendResult(result));
@@ -147,8 +148,7 @@ router.post('/:id/messages', authenticate, async (req, res, next) => {
 
 async function transitionOwnedConversation(req, res, next, toStatus) {
   try {
-    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
-    const conversations = await conversationList(req.user.id, isAdmin);
+    const conversations = await conversationList(req.user);
     const conversation = conversations.find((row) => row.id === Number(req.params.id));
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
     const updated = await transitionConversation(conversation.id, toStatus, {

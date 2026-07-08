@@ -71,19 +71,29 @@ async function main() {
   if (adminMe.role !== 'admin') throw new Error('Expected admin role');
   console.log('Admin /auth/me passed');
 
-  const user1Reg = await request('/api/auth/register', {
+  const user1Create = await request('/api/admin/users', {
     method: 'POST',
-    body: { name: 'Demo User 1', email: user1Email, password: user1Password },
+    token: adminToken,
+    body: { name: 'Demo User 1', email: user1Email, password: user1Password, phone: phone1 },
   });
-  const user1Token = user1Reg.token;
-  console.log('User1 registration passed');
+  const user2Create = await request('/api/admin/users', {
+    method: 'POST',
+    token: adminToken,
+    body: { name: 'Demo User 2', email: user2Email, password: user2Password, phone: phone2 },
+  });
+  if (!user1Create.ok || !user2Create.ok) throw new Error('Admin user creation failed');
 
-  const user2Reg = await request('/api/auth/register', {
+  const user1Login = await request('/api/auth/login', {
     method: 'POST',
-    body: { name: 'Demo User 2', email: user2Email, password: user2Password },
+    body: { email: user1Email, password: user1Password },
   });
-  const user2Token = user2Reg.token;
-  console.log('User2 registration passed');
+  const user2Login = await request('/api/auth/login', {
+    method: 'POST',
+    body: { email: user2Email, password: user2Password },
+  });
+  const user1Token = user1Login.token;
+  const user2Token = user2Login.token;
+  console.log('User creation and login passed');
 
   const u1Me = await request('/api/auth/me', { token: user1Token });
   if (u1Me.role !== 'user') throw new Error('Expected user role');
