@@ -1,9 +1,11 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const { query, queryOne, queryAll } = require('../../config/database');
 const { bindOrgFilter } = require('../../lib/orgScope');
 const { authenticate, requireAdmin } = require('../../middleware/auth');
 const { assertUserInOrg, getOrgBranding, resolveTenancy } = require('../../services/tenancyService');
 const { createApiKey, listApiKeys, revokeApiKey } = require('../../services/apiKeyService');
+const { revokeAllSessions } = require('../../services/sessionService');
 
 const router = express.Router();
 router.use(authenticate);
@@ -362,10 +364,6 @@ router.delete('/api-keys/:id', async (req, res, next) => {
     next(e);
   }
 });
-
-const bcrypt = require('bcryptjs');
-const { resolveTenancy } = require('../../services/tenancyService');
-const { revokeAllSessions } = require('../../services/sessionService');
 
 router.get('/pending-approvals', async (req, res, next) => {
   try {
