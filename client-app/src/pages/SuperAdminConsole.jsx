@@ -4,6 +4,7 @@ import useAsync from '../hooks/useAsync';
 import Topbar from '../components/Topbar';
 import Button from '../components/Button';
 import Input from '../components/Input';
+import Modal from '../components/Modal';
 
 const EMPTY_FORM = {
   provider: 'vonage',
@@ -15,6 +16,15 @@ const EMPTY_FORM = {
   warmup_to: '',
   send_warmup: true,
 };
+
+const PLAN_PRESETS = {
+  starter: { plan: 'starter', message_limit_monthly: 1000, number_limit: 2 },
+  pro: { plan: 'pro', message_limit_monthly: 5000, number_limit: 10 },
+  enterprise: { plan: 'enterprise', message_limit_monthly: 50000, number_limit: 50 },
+};
+
+const ADMIN_LIMIT_DEFAULTS = PLAN_PRESETS.pro;
+const USER_LIMIT_DEFAULTS = PLAN_PRESETS.starter;
 
 export default function SuperAdminConsole() {
   const status = useAsync(() => api('/api/super/providers/status'), []);
@@ -32,6 +42,84 @@ export default function SuperAdminConsole() {
   const [testForm, setTestForm] = useState({ providerId: '', to: '', message: 'SignalMint test SMS' });
   const [notice, setNotice] = useState('');
   const [connectionById, setConnectionById] = useState({});
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [limitsUser, setLimitsUser] = useState(null);
+  const [limitsForm, setLimitsForm] = useState({
+    preset: 'custom',
+    plan: '',
+    message_limit_monthly: '',
+    number_limit: '',
+    subscription_expires_at: '',
+  });
+
+  const adminUsers = useMemo(
+    () => (users.data || []).filter((u) => u.role === 'admin' && u.status === 'active'),
+    [users.data]
+  );
+
+  const filteredUsers = useMemo(() => {
+    const list = users.data || [];
+    if (roleFilter === 'all') return list;
+    return list.filter((u) => u.role === roleFilter);
+  }, [users.data, roleFilter]);
+
+  const openLimitsModal = (user) => {
+    const preset = Object.entries(PLAN_PRESETS).find(
+      ([, values]) =>
+        values.plan === user.subscription_plan
+        && values.message_limit_monthly === user.message_limit_monthly
+        && values.number_limit === user.number_limit
+    )?.[0] || 'custom';
+
+    setLimitsUser(user);
+    setLimitsForm({
+      preset,
+      plan: user.subscription_plan || (user.role === 'admin' ? 'pro' : 'starter'),
+      message_limit_monthly: String(user.message_limit_monthly ?? (user.role === 'admin' ? 5000 : 1000)),
+      number_limit: String(user.number_limit ?? (user.role === 'admin' ? 10 : 2)),
+      subscription_expires_at: user.subscription_expires_at
+        ? user.subscription_expires_at.slice(0, 10)
+        : '',
+    });
+  };
+
+  const applyLimitsPreset = (presetKey) => {
+    if (presetKey === 'custom') {
+      setLimitsForm((prev) => ({ ...prev, preset: 'custom' }));
+      return;
+    }
+    const preset = PLAN_PRESETS[presetKey];
+    if (!preset) return;
+    setLimitsForm({
+      preset: presetKey,
+      plan: preset.plan,
+      message_limit_monthly: String(preset.message_limit_monthly),
+      number_limit: String(preset.number_limit),
+      subscription_expires_at: limitsForm.subscription_expires_at,
+    });
+  };
+
+  const saveLimits = async (event) => {
+    event.preventDefault();
+    if (!limitsUser) return;
+    setNotice('');
+    try {
+      await api(`/api/super/users/${limitsUser.id}/limits`, {
+        method: 'PUT',
+        body: {
+          plan_name: limitsForm.plan,
+          message_limit_monthly: Number(limitsForm.message_limit_monthly),
+          number_limit: Number(limitsForm.number_limit),
+          subscription_expires_at: limitsForm.subscription_expires_at || null,
+        },
+      });
+      setNotice(`Limits updated for ${limitsUser.name}.`);
+      setLimitsUser(null);
+      users.refresh();
+    } catch (error) {
+      setNotice(error.message);
+    }
+  };
 
   const platform = status.data?.platform;
   const selectedCatalog = useMemo(
@@ -224,11 +312,41 @@ export default function SuperAdminConsole() {
           password: form.get('password'),
           role: 'admin',
           org_name: form.get('org_name'),
+          subscription_plan: form.get('subscription_plan') || ADMIN_LIMIT_DEFAULTS.plan,
+          message_limit_monthly: Number(form.get('message_limit_monthly') || ADMIN_LIMIT_DEFAULTS.message_limit_monthly),
+          number_limit: Number(form.get('number_limit') || ADMIN_LIMIT_DEFAULTS.number_limit),
         },
       });
       setNotice('Admin and organization created.');
       users.refresh();
       organizations.refresh();
+      event.currentTarget.reset();
+    } catch (error) {
+      setNotice(error.message);
+    }
+  };
+
+  const createUser = async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const managedByAdminId = form.get('managed_by_admin_id');
+    try {
+      await api('/api/super/users', {
+        method: 'POST',
+        body: {
+          name: form.get('name'),
+          email: form.get('email'),
+          password: form.get('password'),
+          phone: form.get('phone') || undefined,
+          role: 'user',
+          managed_by_admin_id: managedByAdminId ? Number(managedByAdminId) : undefined,
+          subscription_plan: form.get('subscription_plan') || USER_LIMIT_DEFAULTS.plan,
+          message_limit_monthly: Number(form.get('message_limit_monthly') || USER_LIMIT_DEFAULTS.message_limit_monthly),
+          number_limit: Number(form.get('number_limit') || USER_LIMIT_DEFAULTS.number_limit),
+        },
+      });
+      setNotice('User created.');
+      users.refresh();
       event.currentTarget.reset();
     } catch (error) {
       setNotice(error.message);
@@ -560,15 +678,83 @@ export default function SuperAdminConsole() {
         )}
       </section>
 
-      <section className="panel stack">
-        <h3>Create admin (+ new organization)</h3>
-        <form className="stack" onSubmit={createAdmin}>
-          <Input label="Admin name" name="name" required />
-          <Input label="Email" name="email" type="email" required />
-          <Input label="Password" name="password" type="password" required />
-          <Input label="Organization name" name="org_name" required />
-          <Button type="submit">Create admin</Button>
-        </form>
+      <section className="two-column">
+        <div className="panel stack">
+          <h3>Create admin (+ new organization)</h3>
+          <form className="stack" onSubmit={createAdmin}>
+            <Input label="Admin name" name="name" required />
+            <Input label="Email" name="email" type="email" required />
+            <Input label="Password" name="password" type="password" required />
+            <Input label="Organization name" name="org_name" required />
+            <label className="field">
+              <span>Plan preset</span>
+              <select name="subscription_plan" defaultValue={ADMIN_LIMIT_DEFAULTS.plan}>
+                <option value="starter">Starter (1,000 msgs / 2 numbers)</option>
+                <option value="pro">Pro (5,000 msgs / 10 numbers)</option>
+                <option value="enterprise">Enterprise (50,000 msgs / 50 numbers)</option>
+              </select>
+            </label>
+            <Input
+              label="Monthly message limit"
+              name="message_limit_monthly"
+              type="number"
+              min="0"
+              defaultValue={String(ADMIN_LIMIT_DEFAULTS.message_limit_monthly)}
+            />
+            <Input
+              label="Number limit"
+              name="number_limit"
+              type="number"
+              min="0"
+              defaultValue={String(ADMIN_LIMIT_DEFAULTS.number_limit)}
+            />
+            <Button type="submit">Create admin</Button>
+          </form>
+        </div>
+
+        <div className="panel stack">
+          <h3>Create user (under admin)</h3>
+          <form className="stack" onSubmit={createUser}>
+            <Input label="User name" name="name" required />
+            <Input label="Email" name="email" type="email" required />
+            <Input label="Password" name="password" type="password" required />
+            <Input label="Phone (optional)" name="phone" />
+            <label className="field">
+              <span>Managing admin</span>
+              <select name="managed_by_admin_id" required defaultValue="">
+                <option value="" disabled>Select admin…</option>
+                {adminUsers.map((admin) => (
+                  <option key={admin.id} value={admin.id}>
+                    {admin.name} ({admin.email})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Plan preset</span>
+              <select name="subscription_plan" defaultValue={USER_LIMIT_DEFAULTS.plan}>
+                <option value="starter">Starter (1,000 msgs / 2 numbers)</option>
+                <option value="pro">Pro (5,000 msgs / 10 numbers)</option>
+                <option value="enterprise">Enterprise (50,000 msgs / 50 numbers)</option>
+              </select>
+            </label>
+            <Input
+              label="Monthly message limit"
+              name="message_limit_monthly"
+              type="number"
+              min="0"
+              defaultValue={String(USER_LIMIT_DEFAULTS.message_limit_monthly)}
+            />
+            <Input
+              label="Number limit"
+              name="number_limit"
+              type="number"
+              min="0"
+              defaultValue={String(USER_LIMIT_DEFAULTS.number_limit)}
+            />
+            <Button type="submit">Create user</Button>
+          </form>
+        </div>
       </section>
 
       <section className="panel">
@@ -593,22 +779,53 @@ export default function SuperAdminConsole() {
       </section>
 
       <section className="panel">
-        <h3>Platform users</h3>
-        {!users.data?.length && <p>Loading users…</p>}
-        {Boolean(users.data?.length) && (
+        <div className="row-actions" style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
+          <h3 style={{ margin: 0 }}>Platform users</h3>
+          <div className="row-actions">
+            {['all', 'admin', 'user'].map((filter) => (
+              <Button
+                key={filter}
+                variant={roleFilter === filter ? 'primary' : 'ghost'}
+                onClick={() => setRoleFilter(filter)}
+              >
+                {filter === 'all' ? 'All' : filter === 'admin' ? 'Admins' : 'Users'}
+              </Button>
+            ))}
+          </div>
+        </div>
+        {!filteredUsers.length && <p>{users.loading ? 'Loading users…' : 'No users match this filter.'}</p>}
+        {Boolean(filteredUsers.length) && (
           <table>
-            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Org</th><th>Status</th><th></th></tr></thead>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Org</th>
+                <th>Plan</th>
+                <th>Limits</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
             <tbody>
-              {users.data.map((u) => (
+              {filteredUsers.map((u) => (
                 <tr key={u.id}>
                   <td>{u.name}</td>
                   <td>{u.email}</td>
                   <td>{u.role}</td>
                   <td>{u.organization_id || '—'}</td>
+                  <td><span className="badge muted">{u.subscription_plan || '—'}</span></td>
+                  <td>
+                    <small>
+                      {u.message_limit_monthly ?? '—'} msgs / {u.number_limit ?? '—'} nums
+                    </small>
+                  </td>
                   <td><span className={`badge ${u.status}`}>{u.status}</span></td>
                   <td className="row-actions">
                     {u.role !== 'super_admin' && (
                       <>
+                        <Button variant="ghost" onClick={() => openLimitsModal(u)}>Limits</Button>
                         <Button variant="ghost" onClick={() => suspendUser(u)}>
                           {u.status === 'suspended' ? 'Reactivate' : 'Suspend'}
                         </Button>
@@ -625,6 +842,57 @@ export default function SuperAdminConsole() {
           </table>
         )}
       </section>
+
+      {limitsUser && (
+        <Modal title={`Set limits — ${limitsUser.name}`} onClose={() => setLimitsUser(null)} wide>
+          <form className="stack" onSubmit={saveLimits}>
+            <label className="field">
+              <span>Plan preset</span>
+              <select
+                value={limitsForm.preset}
+                onChange={(e) => applyLimitsPreset(e.target.value)}
+              >
+                <option value="starter">Starter (1,000 / 2)</option>
+                <option value="pro">Pro (5,000 / 10)</option>
+                <option value="enterprise">Enterprise (50,000 / 50)</option>
+                <option value="custom">Custom</option>
+              </select>
+            </label>
+            <Input
+              label="Plan name"
+              value={limitsForm.plan}
+              onChange={(e) => setLimitsForm({ ...limitsForm, plan: e.target.value, preset: 'custom' })}
+              required
+            />
+            <Input
+              label="Monthly message limit"
+              type="number"
+              min="0"
+              value={limitsForm.message_limit_monthly}
+              onChange={(e) => setLimitsForm({ ...limitsForm, message_limit_monthly: e.target.value, preset: 'custom' })}
+              required
+            />
+            <Input
+              label="Number limit"
+              type="number"
+              min="0"
+              value={limitsForm.number_limit}
+              onChange={(e) => setLimitsForm({ ...limitsForm, number_limit: e.target.value, preset: 'custom' })}
+              required
+            />
+            <Input
+              label="Subscription expires (optional)"
+              type="date"
+              value={limitsForm.subscription_expires_at}
+              onChange={(e) => setLimitsForm({ ...limitsForm, subscription_expires_at: e.target.value })}
+            />
+            <div className="row-actions">
+              <Button type="submit">Save limits</Button>
+              <Button variant="ghost" type="button" onClick={() => setLimitsUser(null)}>Cancel</Button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </>
   );
 }

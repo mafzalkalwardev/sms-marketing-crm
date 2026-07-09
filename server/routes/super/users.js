@@ -6,6 +6,12 @@ const { workspaceForOrganization } = require('../../services/tenancyService');
 
 const router = express.Router();
 
+function parseOptionalInt(value) {
+  if (value === null || value === undefined || value === '') return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : undefined;
+}
+
 function publicUserRow(row) {
   if (!row) return null;
   return {
@@ -161,8 +167,8 @@ router.post('/', async (req, res, next) => {
             phone || null,
             org.id,
             ws.id,
-            messageLimit || 5000,
-            numberLimit || 10,
+            parseOptionalInt(messageLimit) ?? 5000,
+            parseOptionalInt(numberLimit) ?? 10,
             planName || 'pro',
           ]
         );
@@ -201,8 +207,8 @@ router.post('/', async (req, res, next) => {
           orgId,
           workspaceId,
           managedBy,
-          messageLimit || 1000,
-          numberLimit || 2,
+          parseOptionalInt(messageLimit) ?? 1000,
+          parseOptionalInt(numberLimit) ?? 2,
           planName || 'starter',
         ]
       );
@@ -220,6 +226,76 @@ router.post('/', async (req, res, next) => {
     res.status(201).json({ ok: true, user: publicUserRow(createdUser) });
   } catch (e) {
     if (e.code === '23505') return res.status(400).json({ error: 'Email already exists' });
+    next(e);
+  }
+});
+
+router.put('/:id/limits', async (req, res, next) => {
+  try {
+    const user = await queryOne('SELECT * FROM users WHERE id = $1', [req.params.id]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.role === 'super_admin') return res.status(403).json({ error: 'Cannot modify super admin accounts' });
+
+    const {
+      plan_name: planName,
+      subscription_plan: subscriptionPlan,
+      message_limit_monthly: messageLimit,
+      number_limit: numberLimit,
+      subscription_expires_at: expiresAt,
+      expires_at: expiresAtAlt,
+    } = req.body;
+
+    const resolvedPlan = planName || subscriptionPlan;
+    const resolvedMsgLimit = parseOptionalInt(messageLimit);
+    const resolvedNumLimit = parseOptionalInt(numberLimit);
+    const resolvedExpires = expiresAt || expiresAtAlt || null;
+
+    const updates = [];
+    const values = [];
+    let idx = 1;
+
+    if (resolvedPlan) {
+      updates.push(`subscription_plan = $${idx}`);
+      values.push(resolvedPlan);
+      idx += 1;
+    }
+    if (resolvedMsgLimit !== undefined) {
+      updates.push(`message_limit_monthly = $${idx}`);
+      values.push(resolvedMsgLimit);
+      idx += 1;
+    }
+    if (resolvedNumLimit !== undefined) {
+      updates.push(`number_limit = $${idx}`);
+      values.push(resolvedNumLimit);
+      idx += 1;
+    }
+    if (expiresAt !== undefined || expiresAtAlt !== undefined) {
+      updates.push(`subscription_expires_at = $${idx}`);
+      values.push(resolvedExpires);
+      idx += 1;
+    }
+
+    if (!updates.length) return res.status(400).json({ error: 'No limit fields to update' });
+
+    values.push(req.params.id);
+    await query(`UPDATE users SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${idx}`, values);
+
+    if (resolvedPlan) {
+      await query(
+        `INSERT INTO subscriptions (user_id, plan_name, status, starts_at)
+         VALUES ($1, $2, 'active', NOW())
+         ON CONFLICT (user_id) DO UPDATE SET plan_name = EXCLUDED.plan_name, status = 'active', updated_at = NOW()`,
+        [user.id, resolvedPlan]
+      );
+    }
+
+    await query(
+      'INSERT INTO audit_logs (actor_user_id, target_user_id, action, details) VALUES ($1, $2, $3, $4::jsonb)',
+      [req.user.id, user.id, 'limits_updated', JSON.stringify(req.body)]
+    );
+
+    res.json({ ok: true, user: publicUserRow(await queryOne('SELECT * FROM users WHERE id = $1', [user.id])) });
+  } catch (e) {
     next(e);
   }
 });
@@ -257,8 +333,10 @@ router.put('/:id', async (req, res, next) => {
     if (status) add('status', status);
     if (organizationId) add('organization_id', organizationId);
     if (managedByAdminId !== undefined) add('managed_by_admin_id', managedByAdminId);
-    if (typeof messageLimit === 'number') add('message_limit_monthly', messageLimit);
-    if (typeof numberLimit === 'number') add('number_limit', numberLimit);
+    const resolvedMsgLimit = parseOptionalInt(messageLimit);
+    const resolvedNumLimit = parseOptionalInt(numberLimit);
+    if (resolvedMsgLimit !== undefined) add('message_limit_monthly', resolvedMsgLimit);
+    if (resolvedNumLimit !== undefined) add('number_limit', resolvedNumLimit);
     if (planName) add('subscription_plan', planName);
 
     if (!updates.length) return res.status(400).json({ error: 'No fields to update' });
