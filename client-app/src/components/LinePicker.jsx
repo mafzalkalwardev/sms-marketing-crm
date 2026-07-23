@@ -1,23 +1,34 @@
+import { Label } from '@/components/ui/label';
+
 export default function LinePicker({ lines = [], value, onChange, compact = false }) {
   if (!lines.length) {
-    return <p className="line-picker-empty">No sender number yet. Add one under <strong>My numbers</strong>.</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        No sender number yet. Add one under <strong>My numbers</strong>.
+      </p>
+    );
   }
 
   if (lines.length === 1) {
     const line = lines[0];
     return (
-      <div className={`line-picker-single ${compact ? 'compact' : ''}`}>
-        <span className="line-picker-label">Sending from</span>
+      <div className={compact ? 'text-xs text-muted-foreground' : 'rounded-lg border bg-muted/40 px-3 py-2 text-sm'}>
+        <span className="text-muted-foreground">Sending from </span>
         <strong>{line.label}</strong>
-        <small>{line.phone}</small>
+        <span className="ml-2 text-muted-foreground">{line.phone}</span>
       </div>
     );
   }
 
   return (
-    <label className={`field ${compact ? 'compact' : ''}`}>
-      <span>Send from</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)} required>
+    <div className="space-y-1.5">
+      <Label>Send from</Label>
+      <select
+        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required
+      >
         <option value="">Choose line</option>
         {lines.map((line) => (
           <option key={line.id} value={line.phone}>
@@ -25,6 +36,6 @@ export default function LinePicker({ lines = [], value, onChange, compact = fals
           </option>
         ))}
       </select>
-    </label>
+    </div>
   );
 }

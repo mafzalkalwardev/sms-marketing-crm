@@ -4,6 +4,18 @@ import useAsync from '../hooks/useAsync';
 import Topbar from '../components/Topbar';
 import Button from '../components/Button';
 import EmptyState from '../components/EmptyState';
+import StatCard from '../components/StatCard';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { CheckCircle2 } from 'lucide-react';
 
 export default function Compliance() {
   const summary = useAsync(() => api('/api/compliance/summary'), []);
@@ -35,62 +47,95 @@ export default function Compliance() {
   const keywords = summary.data?.stopKeywords || ['STOP', 'UNSUBSCRIBE', 'REMOVE'];
 
   return (
-    <>
+    <div className="space-y-6 pb-20 md:pb-6">
       <Topbar
         title="Compliance"
         subtitle="Opt-outs, suppression list, and sending rules"
         action={<Button variant="ghost" disabled={exporting} onClick={exportCsv}>Export CSV</Button>}
       />
 
-      <section className="stat-grid">
-        <article className="stat-card"><span>Suppressed numbers</span><strong>{summary.data?.suppressedNumbers ?? '—'}</strong></article>
-        <article className="stat-card"><span>Unsubscribed contacts</span><strong>{summary.data?.unsubscribedContacts ?? '—'}</strong></article>
-        <article className="stat-card"><span>Opted in</span><strong>{summary.data?.optedInContacts ?? '—'}</strong></article>
-        <article className="stat-card"><span>STOP messages</span><strong>{summary.data?.inboundStopMessages ?? '—'}</strong></article>
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Suppressed numbers" value={summary.data?.suppressedNumbers ?? '—'} />
+        <StatCard label="Unsubscribed contacts" value={summary.data?.unsubscribedContacts ?? '—'} />
+        <StatCard label="Opted in" value={summary.data?.optedInContacts ?? '—'} />
+        <StatCard label="STOP messages" value={summary.data?.inboundStopMessages ?? '—'} />
       </section>
 
-      <section className="two-column">
-        <article className="panel">
-          <h3>How it works</h3>
-          <div className="check-list">
-            <span>Send only to opted-in contacts.</span>
-            <span>Include opt-out language in marketing texts.</span>
-            <span>STOP replies auto-unsubscribe the contact and add them to suppression.</span>
-            <span>Future sends to suppressed numbers are blocked.</span>
-            <span>Campaign previews exclude suppressed contacts.</span>
-          </div>
-        </article>
-        <article className="panel">
-          <h3>Opt-out keywords</h3>
-          <div className="keyword-grid">{keywords.map((keyword) => <span key={keyword}>{keyword}</span>)}</div>
-          <h3>Regional notes</h3>
-          <p className="muted-copy">US A2P 10DLC and UK sender-ID rules may apply depending on your use case. Your platform operator configures dialer backends.</p>
-        </article>
-      </section>
-
-      <section className="panel">
-        <h3>Suppression list</h3>
-        {!suppressions.data?.length && (
-          <EmptyState title="No suppressions yet" text="When someone replies STOP, they appear here automatically." />
-        )}
-        {Boolean(suppressions.data?.length) && (
-          <table>
-            <thead>
-              <tr><th>Phone</th><th>Reason</th><th>Source</th><th>When</th></tr>
-            </thead>
-            <tbody>
-              {suppressions.data.map((row) => (
-                <tr key={row.id}>
-                  <td>{row.phone}</td>
-                  <td>{row.reason || '—'}</td>
-                  <td>{row.source || '—'}</td>
-                  <td>{new Date(row.created_at).toLocaleString()}</td>
-                </tr>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>How it works</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2.5">
+              {[
+                'Send only to opted-in contacts.',
+                'Include opt-out language in marketing texts.',
+                'STOP replies auto-unsubscribe the contact and add them to suppression.',
+                'Future sends to suppressed numbers are blocked.',
+                'Campaign previews exclude suppressed contacts.',
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-2 text-sm">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <span>{item}</span>
+                </li>
               ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-    </>
+            </ul>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Opt-out keywords</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {keywords.map((keyword) => (
+                <Badge key={keyword} variant="secondary">{keyword}</Badge>
+              ))}
+            </div>
+            <div>
+              <h4 className="mb-2 text-sm font-semibold">Regional notes</h4>
+              <p className="text-sm text-muted-foreground">
+                US A2P 10DLC and UK sender-ID rules may apply depending on your use case. Your platform operator configures dialer backends.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Suppression list</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!suppressions.data?.length && (
+            <EmptyState title="No suppressions yet" text="When someone replies STOP, they appear here automatically." />
+          )}
+          {Boolean(suppressions.data?.length) && (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Phone</TableHead>
+                  <TableHead>Reason</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>When</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {suppressions.data.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell className="font-medium">{row.phone}</TableCell>
+                    <TableCell>{row.reason || '—'}</TableCell>
+                    <TableCell>{row.source || '—'}</TableCell>
+                    <TableCell className="whitespace-nowrap">{new Date(row.created_at).toLocaleString()}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

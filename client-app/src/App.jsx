@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import { useAuth } from './auth/AuthContext';
 import useBranding from './hooks/useBranding';
 import Sidebar from './components/Sidebar';
@@ -17,7 +18,8 @@ import SuperAdminConsole from './pages/SuperAdminConsole';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Logo from './components/Logo';
-import Button from './components/Button';
+import PageTransition from './components/PageTransition';
+import { Button } from '@/components/ui/button';
 
 const pages = {
   messages: Inbox,
@@ -47,32 +49,45 @@ export default function App() {
   const [page, setPage] = useState('messages');
   const [showAuth, setShowAuth] = useState(() => wantsAuthScreen());
 
-  if (loading) return <div className="auth-loading"><Logo brandName={branding.data?.brandName} />Loading workspace...</div>;
+  if (loading) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background text-muted-foreground">
+        <Logo brandName={branding.data?.brandName} />
+        Loading workspace...
+      </div>
+    );
+  }
+
   if (!user) {
-    if (showAuth) {
-      return <Login onBack={() => setShowAuth(false)} />;
-    }
+    if (showAuth) return <Login onBack={() => setShowAuth(false)} />;
     return <Landing onSignIn={() => setShowAuth(true)} />;
   }
 
   const isSuperAdmin = user.role === 'super_admin';
   const isAdmin = user.role === 'admin' || isSuperAdmin;
-
   let Page = pages[page] || Inbox;
   if (page === 'super' && !isSuperAdmin) Page = Inbox;
   if (page === 'admin' && !isAdmin) Page = Inbox;
 
   return (
-    <div className="app-shell">
+    <div className="flex min-h-screen bg-background">
       {user.impersonated_by && (
-        <div className="alert warn impersonation-banner">
-          <span>Viewing as <strong>{user.name}</strong> ({user.email})</span>
-          <Button variant="ghost" onClick={() => endImpersonation().catch(() => logout())}>Exit impersonation</Button>
+        <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-between gap-3 border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/80 dark:text-amber-100">
+          <span>
+            Viewing as <strong>{user.name}</strong> ({user.email})
+          </span>
+          <Button variant="ghost" size="sm" onClick={() => endImpersonation().catch(() => logout())}>
+            Exit impersonation
+          </Button>
         </div>
       )}
       <Sidebar page={page} setPage={setPage} user={user} logout={logout} />
-      <main className="workspace">
-        <Page setPage={setPage} />
+      <main className={`min-w-0 flex-1 overflow-auto p-4 md:p-6 ${user.impersonated_by ? 'pt-14' : ''}`}>
+        <AnimatePresence mode="wait">
+          <PageTransition id={page}>
+            <Page setPage={setPage} />
+          </PageTransition>
+        </AnimatePresence>
       </main>
       <MobileNav page={page} setPage={setPage} />
     </div>

@@ -1,9 +1,67 @@
 import { useState } from 'react';
+import { motion } from 'framer-motion';
+import {
+  BarChart3,
+  Download,
+  FileText,
+  Key,
+  Palette,
+  RefreshCw,
+  UserPlus,
+  Users,
+} from 'lucide-react';
 import { api, API_BASE } from '../api/client';
 import useAsync from '../hooks/useAsync';
 import Topbar from '../components/Topbar';
+import StatCard from '../components/StatCard';
 import Button from '../components/Button';
 import Input from '../components/Input';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input as ShadInput } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { cn } from '@/lib/utils';
+
+const panelMotion = {
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.25 },
+};
+
+function StatusBadge({ status, children }) {
+  const label = children ?? status;
+  let variant = 'secondary';
+  if (['active', 'live', 'delivered', 'default'].includes(status)) variant = 'success';
+  else if (['suspended', 'warning', 'sandbox', 'pending'].includes(status)) variant = 'warning';
+  return <Badge variant={variant}>{label}</Badge>;
+}
+
+function NoticeAlert({ message, variant = 'success', className, children }) {
+  if (!message && !children) return null;
+  return (
+    <div
+      className={cn(
+        'rounded-md border px-3 py-2 text-sm',
+        variant === 'warn'
+          ? 'border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200'
+          : 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200',
+        className
+      )}
+    >
+      {children ?? message}
+    </div>
+  );
+}
 
 export default function AdminConsole() {
   const [tab, setTab] = useState('users');
@@ -165,228 +223,375 @@ export default function AdminConsole() {
     <>
       <Topbar title="Team admin" subtitle="Users, branding, API keys, and SOC2 audit export" />
 
-      <section className="stat-grid admin-stats">
-        <article className="stat-card"><span>Users</span><strong>{users.data?.length ?? '—'}</strong><small>Team members in your org</small></article>
-        <article className="stat-card"><span>Messages</span><strong>{totalMessages}</strong><small>All time (excludes mock)</small></article>
-        <article className="stat-card"><span>Delivered</span><strong>{totalDelivered}</strong><small>Sent or delivered status</small></article>
-        <article className="stat-card"><span>API keys</span><strong>{apiKeys.data?.length ?? '—'}</strong><small>Active integration keys</small></article>
+      <section className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Users" value={users.data?.length ?? '—'} hint="Team members in your org" />
+        <StatCard label="Messages" value={totalMessages} hint="All time (excludes mock)" />
+        <StatCard label="Delivered" value={totalDelivered} hint="Sent or delivered status" />
+        <StatCard label="API keys" value={apiKeys.data?.length ?? '—'} hint="Active integration keys" />
       </section>
 
-      <div className="auth-tabs" style={{ marginBottom: '1rem' }}>
-        <button type="button" className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}>Users</button>
-        <button type="button" className={tab === 'usage' ? 'active' : ''} onClick={() => setTab('usage')}>Usage</button>
-        <button type="button" className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}>Audit log</button>
-        <button type="button" className={tab === 'branding' ? 'active' : ''} onClick={() => setTab('branding')}>Branding</button>
-        <button type="button" className={tab === 'apikeys' ? 'active' : ''} onClick={() => setTab('apikeys')}>API keys</button>
-      </div>
+      <Tabs value={tab} onValueChange={setTab} className="space-y-4">
+        <TabsList className="flex h-auto flex-wrap gap-1">
+          <TabsTrigger value="users" className="gap-1.5">
+            <Users className="h-4 w-4" />
+            Users
+          </TabsTrigger>
+          <TabsTrigger value="usage" className="gap-1.5">
+            <BarChart3 className="h-4 w-4" />
+            Usage
+          </TabsTrigger>
+          <TabsTrigger value="audit" className="gap-1.5">
+            <FileText className="h-4 w-4" />
+            Audit log
+          </TabsTrigger>
+          <TabsTrigger value="branding" className="gap-1.5">
+            <Palette className="h-4 w-4" />
+            Branding
+          </TabsTrigger>
+          <TabsTrigger value="apikeys" className="gap-1.5">
+            <Key className="h-4 w-4" />
+            API keys
+          </TabsTrigger>
+        </TabsList>
 
-      {notice && <div className="alert success">{notice}</div>}
-      {newKey && (
-        <div className="alert warn">
-          Copy your new API key now — it won&apos;t be shown again:<br />
-          <code>{newKey}</code>
-          <Button variant="ghost" onClick={() => setNewKey(null)}>Dismiss</Button>
-        </div>
-      )}
+        {notice && <NoticeAlert message={notice} />}
+        {newKey && (
+          <NoticeAlert variant="warn">
+            Copy your new API key now — it won&apos;t be shown again:
+            <br />
+            <code className="mt-1 block rounded bg-background/60 px-2 py-1 font-mono text-xs">{newKey}</code>
+            <Button variant="ghost" className="mt-2" onClick={() => setNewKey(null)}>
+              Dismiss
+            </Button>
+          </NoticeAlert>
+        )}
 
-      {tab === 'users' && (
-        <section className="panel stack">
-          <h3>Create user</h3>
-          <form className="stack" onSubmit={createUser} style={{ marginBottom: '1.5rem' }}>
-            <Input label="Name" name="name" required />
-            <Input label="Email" name="email" type="email" required />
-            <Input label="Phone" name="phone" placeholder="+15551234567" />
-            <Input label="Password" name="password" type="password" required />
-            <Button type="submit">Create user</Button>
-          </form>
+        <TabsContent value="users" className="mt-0">
+          <motion.div {...panelMotion}>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <UserPlus className="h-5 w-5" />
+                  Create user
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <form className="grid gap-3 sm:grid-cols-2" onSubmit={createUser}>
+                  <Input label="Name" name="name" required />
+                  <Input label="Email" name="email" type="email" required />
+                  <Input label="Phone" name="phone" placeholder="+15551234567" />
+                  <Input label="Password" name="password" type="password" required />
+                  <div className="sm:col-span-2">
+                    <Button type="submit">Create user</Button>
+                  </div>
+                </form>
 
-          {Boolean(pendingApprovals.data?.length) && (
-            <>
-              <h3>Pending approvals</h3>
-              <table style={{ marginBottom: '1.5rem' }}>
-                <thead><tr><th>Name</th><th>Email</th><th></th></tr></thead>
-                <tbody>
-                  {pendingApprovals.data.map((u) => (
-                    <tr key={u.id}>
-                      <td>{u.name}</td>
-                      <td>{u.email}</td>
-                      <td><Button variant="ghost" onClick={() => approveUser(u)}>Approve</Button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
+                {Boolean(pendingApprovals.data?.length) && (
+                  <div className="space-y-3">
+                    <h4 className="font-display text-base font-semibold">Pending approvals</h4>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead />
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pendingApprovals.data.map((u) => (
+                          <TableRow key={u.id}>
+                            <TableCell>{u.name}</TableCell>
+                            <TableCell>{u.email}</TableCell>
+                            <TableCell className="text-right">
+                              <Button variant="ghost" onClick={() => approveUser(u)}>
+                                Approve
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
 
-          <div className="row-actions" style={{ marginBottom: '1rem' }}>
-            <Input label="Search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name or email" />
-            <Button variant="ghost" onClick={() => users.refresh()}>Refresh</Button>
-          </div>
-          {!users.data?.length && <p>No users found for your organization.</p>}
-          {Boolean(users.data?.length) && (
-            <table>
-              <thead>
-                <tr><th>Name</th><th>Email</th><th>Role</th><th>Plan</th><th>Limits</th><th>Status</th><th></th></tr>
-              </thead>
-              <tbody>
-                {users.data.map((u) => (
-                  <tr key={u.id}>
-                    <td>{u.name}</td>
-                    <td>{u.email}</td>
-                    <td>{u.role}</td>
-                    <td>{u.subscription_plan || '—'}</td>
-                    <td><small>{u.message_limit_monthly || '—'} msgs / {u.number_limit || '—'} nums</small></td>
-                    <td><span className={`badge ${u.status}`}>{u.status}</span></td>
-                    <td className="row-actions">
-                      {u.role === 'user' && (
-                        <>
-                          <Button variant="ghost" onClick={() => toggleStatus(u)}>
-                            {u.status === 'suspended' ? 'Reactivate' : 'Suspend'}
-                          </Button>
-                          <Button variant="ghost" onClick={() => updatePlan(u)}>Plan</Button>
-                          <Button variant="ghost" onClick={() => deleteUser(u)}>Delete</Button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-      )}
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="min-w-[220px] flex-1">
+                    <Input
+                      label="Search"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Name or email"
+                    />
+                  </div>
+                  <Button variant="ghost" onClick={() => users.refresh()}>
+                    <RefreshCw className="mr-1.5 h-4 w-4" />
+                    Refresh
+                  </Button>
+                </div>
 
-      {tab === 'usage' && (
-        <section className="panel">
-          <h3>Message usage by user</h3>
-          {!usage.data?.length && <p>No usage data yet.</p>}
-          {Boolean(usage.data?.length) && (
-            <table>
-              <thead>
-                <tr><th>User</th><th>Messages</th><th>Delivered</th><th>Failed</th><th>Est. cost</th></tr>
-              </thead>
-              <tbody>
-                {usage.data.map((row) => (
-                  <tr key={row.user_email}>
-                    <td>{row.user_name}<br /><small>{row.user_email}</small></td>
-                    <td>{row.message_count}</td>
-                    <td>{row.delivered_count}</td>
-                    <td>{row.failed_count}</td>
-                    <td>{row.total_cost != null ? `$${Number(row.total_cost).toFixed(4)}` : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-      )}
+                {!users.data?.length && (
+                  <p className="text-sm text-muted-foreground">No users found for your organization.</p>
+                )}
+                {Boolean(users.data?.length) && (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>Plan</TableHead>
+                        <TableHead>Limits</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {users.data.map((u) => (
+                        <TableRow key={u.id}>
+                          <TableCell className="font-medium">{u.name}</TableCell>
+                          <TableCell>{u.email}</TableCell>
+                          <TableCell>{u.role}</TableCell>
+                          <TableCell>{u.subscription_plan || '—'}</TableCell>
+                          <TableCell>
+                            <span className="text-xs text-muted-foreground">
+                              {u.message_limit_monthly || '—'} msgs / {u.number_limit || '—'} nums
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <StatusBadge status={u.status} />
+                          </TableCell>
+                          <TableCell>
+                            {u.role === 'user' && (
+                              <div className="flex flex-wrap justify-end gap-1">
+                                <Button variant="ghost" size="sm" onClick={() => toggleStatus(u)}>
+                                  {u.status === 'suspended' ? 'Reactivate' : 'Suspend'}
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => updatePlan(u)}>
+                                  Plan
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => deleteUser(u)}>
+                                  Delete
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        </TabsContent>
 
-      {tab === 'audit' && (
-        <section className="panel">
-          <div className="row-actions" style={{ marginBottom: '1rem' }}>
-            <h3>Audit log</h3>
-            <Button variant="ghost" onClick={() => exportAudit().catch((e) => setNotice(e.message))}>Export CSV (SOC2)</Button>
-          </div>
-          {!audit.data?.length && <p>No audit entries yet.</p>}
-          {Boolean(audit.data?.length) && (
-            <table>
-              <thead>
-                <tr><th>When</th><th>Actor</th><th>Target</th><th>Action</th></tr>
-              </thead>
-              <tbody>
-                {audit.data.map((row) => {
-                  const details = typeof row.details === 'string' ? JSON.parse(row.details) : row.details;
-                  const actionLabel = row.action === 'message_status_changed' && details?.toStatus
-                    ? `Message ${details.fromStatus || 'new'} → ${details.toStatus}`
-                    : row.action;
-                  return (
-                    <tr key={row.id}>
-                      <td>{new Date(row.created_at).toLocaleString()}</td>
-                      <td>{row.actor_name || row.actor_user_id}</td>
-                      <td>{row.target_name || row.target_user_id || '—'}</td>
-                      <td>{actionLabel}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </section>
-      )}
+        <TabsContent value="usage" className="mt-0">
+          <motion.div {...panelMotion}>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Message usage by user</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {!usage.data?.length && (
+                  <p className="text-sm text-muted-foreground">No usage data yet.</p>
+                )}
+                {Boolean(usage.data?.length) && (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>User</TableHead>
+                        <TableHead>Messages</TableHead>
+                        <TableHead>Delivered</TableHead>
+                        <TableHead>Failed</TableHead>
+                        <TableHead>Est. cost</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {usage.data.map((row) => (
+                        <TableRow key={row.user_email}>
+                          <TableCell>
+                            {row.user_name}
+                            <br />
+                            <span className="text-xs text-muted-foreground">{row.user_email}</span>
+                          </TableCell>
+                          <TableCell>{row.message_count}</TableCell>
+                          <TableCell>{row.delivered_count}</TableCell>
+                          <TableCell>{row.failed_count}</TableCell>
+                          <TableCell>
+                            {row.total_cost != null ? `$${Number(row.total_cost).toFixed(4)}` : '—'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        </TabsContent>
 
-      {tab === 'branding' && (
-        <section className="panel stack">
-          <h3>White-label branding</h3>
-          <form className="stack" onSubmit={saveBranding}>
-            <Input label="Brand name">
-              <input
-                value={brandValues.brandName || ''}
-                onChange={(e) => setBrandForm({ ...brandValues, brandName: e.target.value })}
-              />
-            </Input>
-            <Input label="Primary color">
-              <input
-                type="color"
-                value={brandValues.primaryColor || '#2563eb'}
-                onChange={(e) => setBrandForm({ ...brandValues, primaryColor: e.target.value })}
-              />
-            </Input>
-            <Input label="Support email">
-              <input
-                type="email"
-                value={brandValues.supportEmail || ''}
-                onChange={(e) => setBrandForm({ ...brandValues, supportEmail: e.target.value })}
-              />
-            </Input>
-            <Input label="Message retention (days)">
-              <input
-                type="number"
-                min="0"
-                value={brandValues.messageRetentionDays ?? ''}
-                onChange={(e) => setBrandForm({ ...brandValues, messageRetentionDays: Number(e.target.value) || null })}
-              />
-            </Input>
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={Boolean(brandValues.hipaaMode)}
-                onChange={(e) => setBrandForm({ ...brandValues, hipaaMode: e.target.checked })}
-              />
-              HIPAA mode (enables retention audit trail)
-            </label>
-            <Button type="submit">Save branding</Button>
-          </form>
-        </section>
-      )}
+        <TabsContent value="audit" className="mt-0">
+          <motion.div {...panelMotion}>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-lg">Audit log</CardTitle>
+                <Button variant="ghost" onClick={() => exportAudit().catch((e) => setNotice(e.message))}>
+                  <Download className="mr-1.5 h-4 w-4" />
+                  Export CSV (SOC2)
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {!audit.data?.length && (
+                  <p className="text-sm text-muted-foreground">No audit entries yet.</p>
+                )}
+                {Boolean(audit.data?.length) && (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>When</TableHead>
+                        <TableHead>Actor</TableHead>
+                        <TableHead>Target</TableHead>
+                        <TableHead>Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {audit.data.map((row) => {
+                        const details = typeof row.details === 'string' ? JSON.parse(row.details) : row.details;
+                        const actionLabel = row.action === 'message_status_changed' && details?.toStatus
+                          ? `Message ${details.fromStatus || 'new'} → ${details.toStatus}`
+                          : row.action;
+                        return (
+                          <TableRow key={row.id}>
+                            <TableCell>{new Date(row.created_at).toLocaleString()}</TableCell>
+                            <TableCell>{row.actor_name || row.actor_user_id}</TableCell>
+                            <TableCell>{row.target_name || row.target_user_id || '—'}</TableCell>
+                            <TableCell>{actionLabel}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        </TabsContent>
 
-      {tab === 'apikeys' && (
-        <section className="panel">
-          <div className="row-actions" style={{ marginBottom: '1rem' }}>
-            <h3>Integration API keys</h3>
-            <Button onClick={createApiKey}>Create key</Button>
-          </div>
-          <p className="muted-copy">Use keys with <code>Authorization: Bearer smk_…</code> on <code>/api/v1/*</code></p>
-          {!apiKeys.data?.length && <p>No API keys yet.</p>}
-          {Boolean(apiKeys.data?.length) && (
-            <table>
-              <thead>
-                <tr><th>Name</th><th>Prefix</th><th>Scopes</th><th>Last used</th><th></th></tr>
-              </thead>
-              <tbody>
-                {apiKeys.data.map((key) => (
-                  <tr key={key.id}>
-                    <td>{key.name}</td>
-                    <td><code>{key.key_prefix}…</code></td>
-                    <td>{(key.scopes || []).join(', ')}</td>
-                    <td>{key.last_used_at ? new Date(key.last_used_at).toLocaleString() : '—'}</td>
-                    <td><Button variant="danger" onClick={() => revokeKey(key)}>Revoke</Button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-      )}
+        <TabsContent value="branding" className="mt-0">
+          <motion.div {...panelMotion}>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">White-label branding</CardTitle>
+                <CardDescription>Customize your organization&apos;s appearance and retention settings.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form className="max-w-md space-y-4" onSubmit={saveBranding}>
+                  <div className="space-y-1.5">
+                    <Label>Brand name</Label>
+                    <ShadInput
+                      value={brandValues.brandName || ''}
+                      onChange={(e) => setBrandForm({ ...brandValues, brandName: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Primary color</Label>
+                    <input
+                      type="color"
+                      className="h-10 w-full cursor-pointer rounded-md border border-input bg-background"
+                      value={brandValues.primaryColor || '#2563eb'}
+                      onChange={(e) => setBrandForm({ ...brandValues, primaryColor: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Support email</Label>
+                    <ShadInput
+                      type="email"
+                      value={brandValues.supportEmail || ''}
+                      onChange={(e) => setBrandForm({ ...brandValues, supportEmail: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Message retention (days)</Label>
+                    <ShadInput
+                      type="number"
+                      min="0"
+                      value={brandValues.messageRetentionDays ?? ''}
+                      onChange={(e) =>
+                        setBrandForm({ ...brandValues, messageRetentionDays: Number(e.target.value) || null })
+                      }
+                    />
+                  </div>
+                  <div className="flex items-center gap-3 rounded-md border p-3">
+                    <Switch
+                      id="hipaa-mode"
+                      checked={Boolean(brandValues.hipaaMode)}
+                      onCheckedChange={(checked) => setBrandForm({ ...brandValues, hipaaMode: checked })}
+                    />
+                    <Label htmlFor="hipaa-mode" className="cursor-pointer font-normal">
+                      HIPAA mode (enables retention audit trail)
+                    </Label>
+                  </div>
+                  <Button type="submit">Save branding</Button>
+                </form>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </TabsContent>
+
+        <TabsContent value="apikeys" className="mt-0">
+          <motion.div {...panelMotion}>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                <div>
+                  <CardTitle className="text-lg">Integration API keys</CardTitle>
+                  <CardDescription className="mt-1">
+                    Use keys with <code className="text-xs">Authorization: Bearer smk_…</code> on{' '}
+                    <code className="text-xs">/api/v1/*</code>
+                  </CardDescription>
+                </div>
+                <Button onClick={createApiKey}>Create key</Button>
+              </CardHeader>
+              <CardContent>
+                {!apiKeys.data?.length && (
+                  <p className="text-sm text-muted-foreground">No API keys yet.</p>
+                )}
+                {Boolean(apiKeys.data?.length) && (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Prefix</TableHead>
+                        <TableHead>Scopes</TableHead>
+                        <TableHead>Last used</TableHead>
+                        <TableHead />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {apiKeys.data.map((key) => (
+                        <TableRow key={key.id}>
+                          <TableCell className="font-medium">{key.name}</TableCell>
+                          <TableCell>
+                            <code className="text-xs">{key.key_prefix}…</code>
+                          </TableCell>
+                          <TableCell>{(key.scopes || []).join(', ')}</TableCell>
+                          <TableCell>
+                            {key.last_used_at ? new Date(key.last_used_at).toLocaleString() : '—'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="danger" size="sm" onClick={() => revokeKey(key)}>
+                              Revoke
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        </TabsContent>
+      </Tabs>
     </>
   );
 }

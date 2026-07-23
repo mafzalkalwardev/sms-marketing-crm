@@ -5,6 +5,21 @@ import Topbar from '../components/Topbar';
 import StatCard from '../components/StatCard';
 import Button from '../components/Button';
 import { formatStatus } from '../lib/formatStatus';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { cn } from '@/lib/utils';
+
+const selectClassName =
+  'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
 function defaultFromDate() {
   const d = new Date();
@@ -36,34 +51,47 @@ export default function Reports() {
   };
 
   return (
-    <>
+    <div className="space-y-6 pb-20 md:pb-6">
       <Topbar title="Reports" subtitle="Delivery, replies, and estimated cost" />
-      {dashboard.error && <div className="alert error">{dashboard.error}</div>}
 
-      <section className="panel stack">
-        <h3>Date range</h3>
-        <div className="filters reports-filters">
-          <label className="field">
-            <span>From</span>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-          </label>
-          <label className="field">
-            <span>To</span>
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-          </label>
-          <label className="field">
-            <span>Direction</span>
-            <select value={direction} onChange={(e) => setDirection(e.target.value)}>
-              <option value="all">All</option>
-              <option value="outbound">Outbound</option>
-              <option value="inbound">Inbound</option>
-            </select>
-          </label>
-          <Button onClick={refresh}>Apply</Button>
+      {dashboard.error && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {dashboard.error}
         </div>
-      </section>
+      )}
 
-      <section className="stat-grid">
+      <Card>
+        <CardHeader>
+          <CardTitle>Date range</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-muted-foreground">From</Label>
+              <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-muted-foreground">To</Label>
+              <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-muted-foreground">Direction</Label>
+              <select
+                className={cn(selectClassName, 'min-w-[140px]')}
+                value={direction}
+                onChange={(e) => setDirection(e.target.value)}
+              >
+                <option value="all">All</option>
+                <option value="outbound">Outbound</option>
+                <option value="inbound">Inbound</option>
+              </select>
+            </div>
+            <Button onClick={refresh}>Apply</Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Outbound" value={dashboard.data?.outbound ?? '…'} />
         <StatCard label="Delivered" value={dashboard.data?.delivered ?? '…'} />
         <StatCard label="Delivery rate" value={`${dashboard.data?.deliveryRate || 0}%`} />
@@ -73,29 +101,44 @@ export default function Reports() {
         <StatCard label="Mode" value={dashboard.data?.providerMode || 'sandbox'} />
       </section>
 
-      <section className="panel">
-        <h3>Message log</h3>
-        {!messages.data?.length && <p className="muted-copy">No messages in this range.</p>}
-        {Boolean(messages.data?.length) && (
-          <table>
-            <thead>
-              <tr><th>When</th><th>Contact</th><th>Direction</th><th>Status</th><th>Body</th><th>Cost</th></tr>
-            </thead>
-            <tbody>
-              {messages.data.map((row) => (
-                <tr key={row.id}>
-                  <td>{new Date(row.created_at).toLocaleString()}</td>
-                  <td>{row.contact_name || row.to_number || row.from_number}</td>
-                  <td>{row.direction}</td>
-                  <td>{formatStatus(row.status)}</td>
-                  <td className="truncate">{row.message_body}</td>
-                  <td>{row.cost_estimate != null ? `$${Number(row.cost_estimate).toFixed(4)}` : '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-    </>
+      <Card>
+        <CardHeader>
+          <CardTitle>Message log</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!messages.data?.length && (
+            <p className="text-sm text-muted-foreground">No messages in this range.</p>
+          )}
+          {Boolean(messages.data?.length) && (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>When</TableHead>
+                  <TableHead>Contact</TableHead>
+                  <TableHead>Direction</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Body</TableHead>
+                  <TableHead>Cost</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {messages.data.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell className="whitespace-nowrap">{new Date(row.created_at).toLocaleString()}</TableCell>
+                    <TableCell>{row.contact_name || row.to_number || row.from_number}</TableCell>
+                    <TableCell>{row.direction}</TableCell>
+                    <TableCell>{formatStatus(row.status)}</TableCell>
+                    <TableCell className="max-w-[200px] truncate">{row.message_body}</TableCell>
+                    <TableCell>
+                      {row.cost_estimate != null ? `$${Number(row.cost_estimate).toFixed(4)}` : '—'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

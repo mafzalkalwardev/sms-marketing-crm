@@ -27,6 +27,7 @@ export function ThemeProvider({ children }) {
       const next = resolveTheme(theme);
       setResolved(next);
       document.documentElement.setAttribute('data-theme', next);
+      document.documentElement.classList.toggle('dark', next === 'dark');
     };
     apply();
     if (theme !== 'system') return undefined;

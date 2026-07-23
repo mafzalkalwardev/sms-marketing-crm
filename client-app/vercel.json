@@ -1,7 +1,7 @@
 {
   "buildCommand": "npm run build",
-  "outputDirectory": "build",
-  "framework": "create-react-app",
+  "outputDirectory": "dist",
+  "framework": null,
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ]

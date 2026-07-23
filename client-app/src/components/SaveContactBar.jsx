@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api } from '../api/client';
 import Button from './Button';
 import { isSavedContact } from '../lib/contactUtils';
+import { Input } from '@/components/ui/input';
 
 export default function SaveContactBar({ phone, name = '', conversationId, onSaved }) {
   const [contactName, setContactName] = useState('');
@@ -38,13 +39,13 @@ export default function SaveContactBar({ phone, name = '', conversationId, onSav
   };
 
   return (
-    <div className="save-contact-bar">
-      <div className="save-contact-copy">
-        <strong>Save to contacts</strong>
-        <span>{phone}</span>
+    <div className="flex flex-wrap items-center gap-3 border-b bg-amber-50 px-3 py-2 dark:bg-amber-950/30">
+      <div className="min-w-0">
+        <strong className="text-sm">Save to contacts</strong>
+        <span className="ml-2 text-xs text-muted-foreground">{phone}</span>
       </div>
-      <div className="save-contact-form">
-        <input
+      <div className="flex flex-1 items-center gap-2">
+        <Input
           type="text"
           value={contactName}
           onChange={(e) => setContactName(e.target.value)}
@@ -55,7 +56,7 @@ export default function SaveContactBar({ phone, name = '', conversationId, onSav
           {saving ? 'Saving…' : 'Save'}
         </Button>
       </div>
-      {error && <p className="save-contact-error">{error}</p>}
+      {error && <p className="w-full text-sm text-destructive">{error}</p>}
     </div>
   );
 }

@@ -115,7 +115,7 @@ npm install && npm run dev
 
 ```powershell
 cd client-app
-npm install && npm start
+npm install && npm run dev
 ```
 
 Without Docker, use the **live URLs** above for testing.
@@ -147,7 +147,17 @@ vercel deploy --prod
 
 Set env vars in Vercel dashboard for `signalmint-api`. Migrations run automatically on boot.
 
-### Frontend (`client-app/`)
+### Frontend (Vite)
+
+```bash
+cd client-app
+npm install
+npm run dev          # http://localhost:3000
+```
+
+Set `VITE_API_URL` (production default: `https://signalmint-api.vercel.app`). Legacy `REACT_APP_API_URL` is still aliased in Vite config.
+
+Stack: React 18, Vite, TypeScript/JSX, Tailwind, shadcn/ui, Framer Motion, GSAP. (`client-app/`)
 
 ```powershell
 cd client-app

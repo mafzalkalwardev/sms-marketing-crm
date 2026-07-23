@@ -1,40 +1,20 @@
+import { Moon, Sun } from 'lucide-react';
 import { useTheme } from '../theme/ThemeContext';
-
-const OPTIONS = [
-  { id: 'light', label: 'Light' },
-  { id: 'dark', label: 'Dark' },
-  { id: 'system', label: 'System' },
-];
+import { Button } from '@/components/ui/button';
 
 export default function ThemeToggle({ compact = false }) {
-  const { theme, setTheme, resolved } = useTheme();
-
-  if (compact) {
-    return (
-      <button
-        type="button"
-        className="theme-toggle-compact"
-        onClick={() => setTheme(resolved === 'dark' ? 'light' : 'dark')}
-        title={`Switch to ${resolved === 'dark' ? 'light' : 'dark'} mode`}
-        aria-label="Toggle dark mode"
-      >
-        {resolved === 'dark' ? '☀' : '☾'}
-      </button>
-    );
-  }
-
+  const { resolved, setTheme } = useTheme();
+  const isDark = resolved === 'dark';
   return (
-    <div className="theme-toggle" role="radiogroup" aria-label="Color theme">
-      {OPTIONS.map((option) => (
-        <button
-          key={option.id}
-          type="button"
-          className={theme === option.id ? 'active' : ''}
-          onClick={() => setTheme(option.id)}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
+    <Button
+      type="button"
+      variant="ghost"
+      size={compact ? 'icon' : 'sm'}
+      aria-label="Toggle theme"
+      onClick={() => setTheme(isDark ? 'light' : 'dark')}
+    >
+      {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+      {!compact && <span>{isDark ? 'Light' : 'Dark'}</span>}
+    </Button>
   );
 }

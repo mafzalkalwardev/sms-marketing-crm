@@ -1,10 +1,43 @@
 import { useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
+import {
+  Activity,
+  Building2,
+  Globe,
+  RefreshCw,
+  Send,
+  Server,
+  UserCog,
+  UserPlus,
+  Users,
+} from 'lucide-react';
 import { api } from '../api/client';
 import useAsync from '../hooks/useAsync';
 import Topbar from '../components/Topbar';
+import StatCard from '../components/StatCard';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import Modal from '../components/Modal';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 
 const EMPTY_FORM = {
   provider: 'vonage',
@@ -25,6 +58,33 @@ const PLAN_PRESETS = {
 
 const ADMIN_LIMIT_DEFAULTS = PLAN_PRESETS.pro;
 const USER_LIMIT_DEFAULTS = PLAN_PRESETS.starter;
+
+const panelMotion = {
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.25 },
+};
+
+const selectClassName =
+  'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+
+function StatusBadge({ status, children, muted = false, ...props }) {
+  const label = children ?? status;
+  if (muted) return <Badge variant="secondary" {...props}>{label}</Badge>;
+  let variant = 'secondary';
+  if (['active', 'live', 'default', 'ok', 'connected', 'yes'].includes(status)) variant = 'success';
+  else if (['suspended', 'warning', 'sandbox', 'failed', 'unhealthy', 'no'].includes(status)) variant = 'warning';
+  return <Badge variant={variant} {...props}>{label}</Badge>;
+}
+
+function NoticeAlert({ message }) {
+  if (!message) return null;
+  return (
+    <div className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+      {message}
+    </div>
+  );
+}
 
 export default function SuperAdminConsole() {
   const status = useAsync(() => api('/api/super/providers/status'), []);
@@ -302,19 +362,19 @@ export default function SuperAdminConsole() {
 
   const createAdmin = async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formData = new FormData(event.currentTarget);
     try {
       await api('/api/super/users', {
         method: 'POST',
         body: {
-          name: form.get('name'),
-          email: form.get('email'),
-          password: form.get('password'),
+          name: formData.get('name'),
+          email: formData.get('email'),
+          password: formData.get('password'),
           role: 'admin',
-          org_name: form.get('org_name'),
-          subscription_plan: form.get('subscription_plan') || ADMIN_LIMIT_DEFAULTS.plan,
-          message_limit_monthly: Number(form.get('message_limit_monthly') || ADMIN_LIMIT_DEFAULTS.message_limit_monthly),
-          number_limit: Number(form.get('number_limit') || ADMIN_LIMIT_DEFAULTS.number_limit),
+          org_name: formData.get('org_name'),
+          subscription_plan: formData.get('subscription_plan') || ADMIN_LIMIT_DEFAULTS.plan,
+          message_limit_monthly: Number(formData.get('message_limit_monthly') || ADMIN_LIMIT_DEFAULTS.message_limit_monthly),
+          number_limit: Number(formData.get('number_limit') || ADMIN_LIMIT_DEFAULTS.number_limit),
         },
       });
       setNotice('Admin and organization created.');
@@ -328,21 +388,21 @@ export default function SuperAdminConsole() {
 
   const createUser = async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const managedByAdminId = form.get('managed_by_admin_id');
+    const formData = new FormData(event.currentTarget);
+    const managedByAdminId = formData.get('managed_by_admin_id');
     try {
       await api('/api/super/users', {
         method: 'POST',
         body: {
-          name: form.get('name'),
-          email: form.get('email'),
-          password: form.get('password'),
-          phone: form.get('phone') || undefined,
+          name: formData.get('name'),
+          email: formData.get('email'),
+          password: formData.get('password'),
+          phone: formData.get('phone') || undefined,
           role: 'user',
           managed_by_admin_id: managedByAdminId ? Number(managedByAdminId) : undefined,
-          subscription_plan: form.get('subscription_plan') || USER_LIMIT_DEFAULTS.plan,
-          message_limit_monthly: Number(form.get('message_limit_monthly') || USER_LIMIT_DEFAULTS.message_limit_monthly),
-          number_limit: Number(form.get('number_limit') || USER_LIMIT_DEFAULTS.number_limit),
+          subscription_plan: formData.get('subscription_plan') || USER_LIMIT_DEFAULTS.plan,
+          message_limit_monthly: Number(formData.get('message_limit_monthly') || USER_LIMIT_DEFAULTS.message_limit_monthly),
+          number_limit: Number(formData.get('number_limit') || USER_LIMIT_DEFAULTS.number_limit),
         },
       });
       setNotice('User created.');
@@ -381,483 +441,789 @@ export default function SuperAdminConsole() {
     <>
       <Topbar title="Super Admin" subtitle="Dialer backends, delivery mode, and platform users" />
 
-      <section className="panel platform-banner">
-        <div>
-          <p className="eyebrow">Delivery mode</p>
-          <h3>{platform?.deliveryMode === 'live' ? 'Live SMS enabled' : 'Sandbox mode'}</h3>
-          <p>{platform?.sandboxReason || 'Checking platform status...'}</p>
-          {healthDetail.data?.liveReadiness?.blockers?.length > 0 && (
-            <ul className="muted-copy" style={{ marginTop: '8px', paddingLeft: '1.2rem' }}>
-              {healthDetail.data.liveReadiness.blockers.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <span className={`badge ${platform?.deliveryMode === 'live' ? 'active' : 'warning'}`}>
-          {platform?.deliveryMode || 'checking'}
-        </span>
-      </section>
-
-      <section className="two-column">
-        <form className="panel stack" onSubmit={addProvider}>
-          <h3>Add dialer backend</h3>
-          <label className="field">
-            <span>Dialer type</span>
-            <select value={form.provider} onChange={(e) => setForm({ ...form, provider: e.target.value })}>
-              {catalog.data?.catalog?.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.label} ({entry.lane === 'browser' ? 'Browser' : 'API'})
-                </option>
-              ))}
-            </select>
-          </label>
-          <Input label="Label" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="Primary sales line" />
-          {isBrowser ? (
-            <Input label="Portal URL" value={form.base_url} onChange={(e) => setForm({ ...form, base_url: e.target.value })} placeholder="https://voice.google.com" required />
-          ) : (
-            <>
-              {form.provider === 'twilio' && (
-                <Input label="Account SID" value={form.account_sid} onChange={(e) => setForm({ ...form, account_sid: e.target.value })} required />
+      <motion.div {...panelMotion}>
+        <Card className="mb-6">
+          <CardContent className="flex flex-wrap items-start justify-between gap-4 p-6">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Delivery mode</p>
+              <h3 className="font-display text-xl font-semibold">
+                {platform?.deliveryMode === 'live' ? 'Live SMS enabled' : 'Sandbox mode'}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {platform?.sandboxReason || 'Checking platform status...'}
+              </p>
+              {healthDetail.data?.liveReadiness?.blockers?.length > 0 && (
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                  {healthDetail.data.liveReadiness.blockers.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
               )}
-              <Input label={form.provider === 'twilio' ? 'Auth token' : 'API key'} value={form.api_key} onChange={(e) => setForm({ ...form, api_key: e.target.value })} required />
-              {form.provider !== 'telnyx' && (
-                <Input label="API secret" type="password" value={form.api_secret} onChange={(e) => setForm({ ...form, api_secret: e.target.value })} required />
-              )}
-            </>
-          )}
-          <Input
-            label="Warm-up recipient (optional)"
-            value={form.warmup_to}
-            onChange={(e) => setForm({ ...form, warmup_to: e.target.value })}
-            placeholder="+15551234567 — sent on connect"
-          />
-          {form.warmup_to && (
-            <label className="field checkbox-field">
-              <input
-                type="checkbox"
-                checked={form.send_warmup}
-                onChange={(e) => setForm({ ...form, send_warmup: e.target.checked })}
-              />
-              <span>Send warm-up message when connected</span>
-            </label>
-          )}
-          <Button>Add backend</Button>
-        </form>
+            </div>
+            <StatusBadge status={platform?.deliveryMode === 'live' ? 'live' : 'warning'}>
+              {platform?.deliveryMode || 'checking'}
+            </StatusBadge>
+          </CardContent>
+        </Card>
+      </motion.div>
 
-        <form className="panel stack" onSubmit={sendTest}>
-          <h3>Send test / warm-up SMS</h3>
-          <p className="muted-copy">Routes through the selected backend. In sandbox mode, messages are simulated only.</p>
-          <label className="field">
-            <span>Backend</span>
-            <select
-              value={testForm.providerId}
-              onChange={(e) => setTestForm({ ...testForm, providerId: e.target.value })}
-            >
-              <option value="">Default backend</option>
-              {providers.data?.providers?.map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.label || row.provider}{row.is_default ? ' (default)' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Input label="Recipient" value={testForm.to} onChange={(e) => setTestForm({ ...testForm, to: e.target.value })} placeholder="+15551234567" required />
-          <label className="field">
-            <span>Message</span>
-            <textarea value={testForm.message} onChange={(e) => setTestForm({ ...testForm, message: e.target.value })} required />
-          </label>
-          <Button>Send test</Button>
-        </form>
-      </section>
-
-      <section className="panel">
-        <h3>Configured dialer backends</h3>
-        {!providers.data?.providers?.length && <p>No backends configured yet. Add Vonage, Twilio, or a browser dialer above.</p>}
-        {Boolean(providers.data?.providers?.length) && (
-          <table>
-            <thead>
-              <tr><th>Label</th><th>Type</th><th>Lane</th><th>Status</th><th>Health</th><th>Connection</th><th></th></tr>
-            </thead>
-            <tbody>
-              {providers.data.providers.map((row) => (
-                <tr key={row.id}>
-                  <td>{row.label || row.provider}</td>
-                  <td>{row.catalog?.label || row.provider}</td>
-                  <td><span className="badge">{row.adapter_type || row.catalog?.lane || 'api'}</span></td>
-                  <td><span className={`badge ${row.status}`}>{row.is_default ? 'default' : row.status}</span></td>
-                  <td>
-                    {row.health_checked_at ? (
-                      <span className={`badge ${row.health_ok ? 'active' : 'warning'}`} title={row.health_error || row.health_mode || ''}>
-                        {row.health_ok ? row.health_mode || 'ok' : 'unhealthy'}
-                      </span>
-                    ) : (
-                      <span className="badge muted">unchecked</span>
+      <section className="mb-6 grid gap-4 lg:grid-cols-2">
+        <motion.div {...panelMotion}>
+          <Card className="h-full">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Server className="h-5 w-5" />
+                Add dialer backend
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form className="space-y-3" onSubmit={addProvider}>
+                <div className="space-y-1.5">
+                  <Label>Dialer type</Label>
+                  <Select value={form.provider} onValueChange={(value) => setForm({ ...form, provider: value })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select dialer type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {catalog.data?.catalog?.map((entry) => (
+                        <SelectItem key={entry.id} value={entry.id}>
+                          {entry.label} ({entry.lane === 'browser' ? 'Browser' : 'API'})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Input
+                  label="Label"
+                  value={form.label}
+                  onChange={(e) => setForm({ ...form, label: e.target.value })}
+                  placeholder="Primary sales line"
+                />
+                {isBrowser ? (
+                  <Input
+                    label="Portal URL"
+                    value={form.base_url}
+                    onChange={(e) => setForm({ ...form, base_url: e.target.value })}
+                    placeholder="https://voice.google.com"
+                    required
+                  />
+                ) : (
+                  <>
+                    {form.provider === 'twilio' && (
+                      <Input
+                        label="Account SID"
+                        value={form.account_sid}
+                        onChange={(e) => setForm({ ...form, account_sid: e.target.value })}
+                        required
+                      />
                     )}
-                  </td>
-                  <td>
-                    {connectionById[row.id] ? (
-                      <span className={`badge ${connectionById[row.id].ok ? 'active' : 'warning'}`}>
-                        {connectionById[row.id].ok ? 'connected' : 'failed'}
-                      </span>
-                    ) : (
-                      <span className="badge muted">untested</span>
+                    <Input
+                      label={form.provider === 'twilio' ? 'Auth token' : 'API key'}
+                      value={form.api_key}
+                      onChange={(e) => setForm({ ...form, api_key: e.target.value })}
+                      required
+                    />
+                    {form.provider !== 'telnyx' && (
+                      <Input
+                        label="API secret"
+                        type="password"
+                        value={form.api_secret}
+                        onChange={(e) => setForm({ ...form, api_secret: e.target.value })}
+                        required
+                      />
                     )}
-                  </td>
-                  <td className="row-actions">
-                    <Button variant="ghost" onClick={() => testConnection(row.id)}>Test</Button>
-                    <Button variant="ghost" onClick={() => sendWarmup(row.id)}>Warm-up</Button>
-                    {!row.is_default && <Button variant="ghost" onClick={() => setDefault(row.id)}>Set default</Button>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <div className="code-box">
-          API webhooks: /webhooks/&#123;provider&#125;/inbound · /status (vonage, twilio, telnyx, bandwidth, zoom, ringox, 3cx)
-        </div>
+                  </>
+                )}
+                <Input
+                  label="Warm-up recipient (optional)"
+                  value={form.warmup_to}
+                  onChange={(e) => setForm({ ...form, warmup_to: e.target.value })}
+                  placeholder="+15551234567 — sent on connect"
+                />
+                {form.warmup_to && (
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={form.send_warmup}
+                      onChange={(e) => setForm({ ...form, send_warmup: e.target.checked })}
+                      className="rounded border-input"
+                    />
+                    <span>Send warm-up message when connected</span>
+                  </label>
+                )}
+                <Button type="submit">Add backend</Button>
+              </form>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div {...panelMotion}>
+          <Card className="h-full">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Send className="h-5 w-5" />
+                Send test / warm-up SMS
+              </CardTitle>
+              <CardDescription>
+                Routes through the selected backend. In sandbox mode, messages are simulated only.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form className="space-y-3" onSubmit={sendTest}>
+                <div className="space-y-1.5">
+                  <Label>Backend</Label>
+                  <Select
+                    value={testForm.providerId || 'default'}
+                    onValueChange={(value) =>
+                      setTestForm({ ...testForm, providerId: value === 'default' ? '' : value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Default backend" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Default backend</SelectItem>
+                      {providers.data?.providers?.map((row) => (
+                        <SelectItem key={row.id} value={String(row.id)}>
+                          {row.label || row.provider}{row.is_default ? ' (default)' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Input
+                  label="Recipient"
+                  value={testForm.to}
+                  onChange={(e) => setTestForm({ ...testForm, to: e.target.value })}
+                  placeholder="+15551234567"
+                  required
+                />
+                <div className="space-y-1.5">
+                  <Label>Message</Label>
+                  <Textarea
+                    value={testForm.message}
+                    onChange={(e) => setTestForm({ ...testForm, message: e.target.value })}
+                    required
+                  />
+                </div>
+                <Button type="submit">Send test</Button>
+              </form>
+            </CardContent>
+          </Card>
+        </motion.div>
       </section>
 
-      <section className="panel">
-        <h3>Browser automation profiles (DOM/BOM)</h3>
-        <p className="muted-copy">
-          Headless dialers (Google Voice, advertiser portals) run through the Python automation worker.
-          API dialers use REST/webhooks above.
-        </p>
-        {!browserProfiles.data?.profiles?.length && (
-          <p>No browser profiles yet. Add a Google Voice or Advertiser backend to auto-create one.</p>
-        )}
-        {Boolean(browserProfiles.data?.profiles?.length) && (
-          <table>
-            <thead>
-              <tr><th>Label</th><th>Adapter</th><th>Portal</th><th>Engine</th><th>Selectors</th><th>Session</th><th></th></tr>
-            </thead>
-            <tbody>
-              {browserProfiles.data.profiles.map((row) => (
-                <tr key={row.id}>
-                  <td>{row.label || row.adapter_id}</td>
-                  <td>{row.adapter_id}</td>
-                  <td className="truncate">{row.base_url || '—'}</td>
-                  <td><span className="badge">{row.engine}</span></td>
-                  <td><span className="badge muted">{row.selector_version || 'v1'}</span></td>
-                  <td><span className={`badge ${row.session_status}`}>{row.session_status}</span></td>
-                  <td className="row-actions">
-                    <Button variant="ghost" onClick={() => browserLogin(row.id)}>Login</Button>
-                    <Button variant="ghost" onClick={() => browserSession(row.id)}>Check</Button>
-                    <Button variant="ghost" onClick={() => browserPoll(row.id)}>Poll</Button>
-                    <Button variant="ghost" onClick={() => migrateSelectors(row.id)}>v2</Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      {notice && <div className="alert success">{notice}</div>}
-
-      <section className="panel">
-        <h3>Platform health & observability</h3>
-        <div className="stat-grid admin-stats">
-          <article className="stat-card">
-            <span>Database</span>
-            <strong>{healthDetail.data?.database ? 'OK' : '—'}</strong>
-            <small>{healthDetail.data?.messages ?? 0} messages</small>
-          </article>
-          <article className="stat-card">
-            <span>Backends</span>
-            <strong>{healthDetail.data?.providers ?? 0}</strong>
-            <small>{healthDetail.data?.platform?.deliveryMode || 'checking'}</small>
-          </article>
-          <article className="stat-card">
-            <span>Worker</span>
-            <strong>
-              {!healthDetail.data?.automationWorker?.configured
-                ? 'N/A'
-                : healthDetail.data.automationWorker.ok
-                  ? 'OK'
-                  : 'Down'}
-            </strong>
-            <small>Browser lane automation</small>
-          </article>
-          <article className="stat-card">
-            <span>Webhooks</span>
-            <strong>{webhookLogs.data?.logs?.length ?? 0}</strong>
-            <small>Recent events</small>
-          </article>
-        </div>
-        <div className="two-column" style={{ marginTop: '1rem' }}>
-          <div>
-            <h4>Webhook log</h4>
-            {!webhookLogs.data?.logs?.length && <p className="muted-copy">No webhook events yet.</p>}
-            {Boolean(webhookLogs.data?.logs?.length) && (
-              <table>
-                <thead><tr><th>Provider</th><th>Type</th><th>Verified</th><th>When</th></tr></thead>
-                <tbody>
-                  {webhookLogs.data.logs.map((row) => (
-                    <tr key={row.id}>
-                      <td>{row.provider}</td>
-                      <td>{row.event_type}</td>
-                      <td><span className={`badge ${row.verified ? 'active' : 'warning'}`}>{row.verified ? 'yes' : 'no'}</span></td>
-                      <td>{new Date(row.created_at).toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      <motion.div {...panelMotion} className="mb-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Configured dialer backends</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!providers.data?.providers?.length && (
+              <p className="text-sm text-muted-foreground">
+                No backends configured yet. Add Vonage, Twilio, or a browser dialer above.
+              </p>
             )}
-          </div>
-          <div>
-            <h4>Audit trail</h4>
-            {!platformAudit.data?.audit?.length && <p className="muted-copy">No audit entries yet.</p>}
-            {Boolean(platformAudit.data?.audit?.length) && (
-              <table>
-                <thead><tr><th>Action</th><th>Actor</th><th>When</th></tr></thead>
-                <tbody>
-                  {platformAudit.data.audit.map((row) => (
-                    <tr key={row.id}>
-                      <td>{row.action}</td>
-                      <td>{row.actor_user_id}</td>
-                      <td>{new Date(row.created_at).toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-          <div>
-            <h4>Webhook dead letters</h4>
-            {!deadLetters.data?.deadLetters?.length && <p className="muted-copy">No failed webhooks pending retry.</p>}
-            {Boolean(deadLetters.data?.deadLetters?.length) && (
-              <table>
-                <thead><tr><th>Provider</th><th>Type</th><th>Error</th><th>Retries</th><th></th></tr></thead>
-                <tbody>
-                  {deadLetters.data.deadLetters.map((row) => (
-                    <tr key={row.id}>
-                      <td>{row.provider}</td>
-                      <td>{row.event_type}</td>
-                      <td className="truncate">{row.error_message}</td>
-                      <td>{row.retry_count}</td>
-                      <td>
-                        <Button variant="ghost" onClick={async () => {
-                          await api(`/api/super/webhook-dead-letters/${row.id}/retry`, { method: 'POST' });
-                          deadLetters.refresh();
-                          webhookLogs.refresh();
-                        }}>Retry</Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-        <Button variant="ghost" onClick={() => { healthDetail.refresh(); webhookLogs.refresh(); deadLetters.refresh(); platformAudit.refresh(); }}>
-          Refresh observability
-        </Button>
-      </section>
-
-      <section className="panel">
-        <h3>Pending approvals</h3>
-        {!pendingApprovals.data?.length && <p className="muted-copy">No users awaiting approval.</p>}
-        {Boolean(pendingApprovals.data?.length) && (
-          <table>
-            <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Org</th><th></th></tr></thead>
-            <tbody>
-              {pendingApprovals.data.map((u) => (
-                <tr key={u.id}>
-                  <td>{u.name}</td>
-                  <td>{u.email}</td>
-                  <td>{u.phone || '—'}</td>
-                  <td>{u.organization_id || '—'}</td>
-                  <td><Button variant="ghost" onClick={() => approveUser(u)}>Approve</Button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      <section className="two-column">
-        <div className="panel stack">
-          <h3>Create admin (+ new organization)</h3>
-          <form className="stack" onSubmit={createAdmin}>
-            <Input label="Admin name" name="name" required />
-            <Input label="Email" name="email" type="email" required />
-            <Input label="Password" name="password" type="password" required />
-            <Input label="Organization name" name="org_name" required />
-            <label className="field">
-              <span>Plan preset</span>
-              <select name="subscription_plan" defaultValue={ADMIN_LIMIT_DEFAULTS.plan}>
-                <option value="starter">Starter (1,000 msgs / 2 numbers)</option>
-                <option value="pro">Pro (5,000 msgs / 10 numbers)</option>
-                <option value="enterprise">Enterprise (50,000 msgs / 50 numbers)</option>
-              </select>
-            </label>
-            <Input
-              label="Monthly message limit"
-              name="message_limit_monthly"
-              type="number"
-              min="0"
-              defaultValue={String(ADMIN_LIMIT_DEFAULTS.message_limit_monthly)}
-            />
-            <Input
-              label="Number limit"
-              name="number_limit"
-              type="number"
-              min="0"
-              defaultValue={String(ADMIN_LIMIT_DEFAULTS.number_limit)}
-            />
-            <Button type="submit">Create admin</Button>
-          </form>
-        </div>
-
-        <div className="panel stack">
-          <h3>Create user (under admin)</h3>
-          <form className="stack" onSubmit={createUser}>
-            <Input label="User name" name="name" required />
-            <Input label="Email" name="email" type="email" required />
-            <Input label="Password" name="password" type="password" required />
-            <Input label="Phone (optional)" name="phone" />
-            <label className="field">
-              <span>Managing admin</span>
-              <select name="managed_by_admin_id" required defaultValue="">
-                <option value="" disabled>Select admin…</option>
-                {adminUsers.map((admin) => (
-                  <option key={admin.id} value={admin.id}>
-                    {admin.name} ({admin.email})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>Plan preset</span>
-              <select name="subscription_plan" defaultValue={USER_LIMIT_DEFAULTS.plan}>
-                <option value="starter">Starter (1,000 msgs / 2 numbers)</option>
-                <option value="pro">Pro (5,000 msgs / 10 numbers)</option>
-                <option value="enterprise">Enterprise (50,000 msgs / 50 numbers)</option>
-              </select>
-            </label>
-            <Input
-              label="Monthly message limit"
-              name="message_limit_monthly"
-              type="number"
-              min="0"
-              defaultValue={String(USER_LIMIT_DEFAULTS.message_limit_monthly)}
-            />
-            <Input
-              label="Number limit"
-              name="number_limit"
-              type="number"
-              min="0"
-              defaultValue={String(USER_LIMIT_DEFAULTS.number_limit)}
-            />
-            <Button type="submit">Create user</Button>
-          </form>
-        </div>
-      </section>
-
-      <section className="panel">
-        <h3>Organizations</h3>
-        {!organizations.data?.organizations?.length && <p>Loading…</p>}
-        {Boolean(organizations.data?.organizations?.length) && (
-          <table>
-            <thead><tr><th>Name</th><th>Users</th><th>Delivery</th><th>Admin</th><th></th></tr></thead>
-            <tbody>
-              {organizations.data.organizations.map((org) => (
-                <tr key={org.id}>
-                  <td>{org.brand_name || org.name}</td>
-                  <td>{org.user_count}</td>
-                  <td><span className={`badge ${org.delivery_mode === 'live' ? 'active' : 'warning'}`}>{org.delivery_mode}</span></td>
-                  <td>{org.admin_name || '—'}</td>
-                  <td><Button variant="ghost" onClick={() => toggleOrgLive(org)}>Toggle live</Button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      <section className="panel">
-        <div className="row-actions" style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
-          <h3 style={{ margin: 0 }}>Platform users</h3>
-          <div className="row-actions">
-            {['all', 'admin', 'user'].map((filter) => (
-              <Button
-                key={filter}
-                variant={roleFilter === filter ? 'primary' : 'ghost'}
-                onClick={() => setRoleFilter(filter)}
-              >
-                {filter === 'all' ? 'All' : filter === 'admin' ? 'Admins' : 'Users'}
-              </Button>
-            ))}
-          </div>
-        </div>
-        {!filteredUsers.length && <p>{users.loading ? 'Loading users…' : 'No users match this filter.'}</p>}
-        {Boolean(filteredUsers.length) && (
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Org</th>
-                <th>Plan</th>
-                <th>Limits</th>
-                <th>Status</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredUsers.map((u) => (
-                <tr key={u.id}>
-                  <td>{u.name}</td>
-                  <td>{u.email}</td>
-                  <td>{u.role}</td>
-                  <td>{u.organization_id || '—'}</td>
-                  <td><span className="badge muted">{u.subscription_plan || '—'}</span></td>
-                  <td>
-                    <small>
-                      {u.message_limit_monthly ?? '—'} msgs / {u.number_limit ?? '—'} nums
-                    </small>
-                  </td>
-                  <td><span className={`badge ${u.status}`}>{u.status}</span></td>
-                  <td className="row-actions">
-                    {u.role !== 'super_admin' && (
-                      <>
-                        <Button variant="ghost" onClick={() => openLimitsModal(u)}>Limits</Button>
-                        <Button variant="ghost" onClick={() => suspendUser(u)}>
-                          {u.status === 'suspended' ? 'Reactivate' : 'Suspend'}
-                        </Button>
-                        {u.status === 'active' && u.role === 'user' && (
-                          <Button variant="ghost" onClick={() => impersonateUser(u)}>Login as</Button>
+            {Boolean(providers.data?.providers?.length) && (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Label</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Lane</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Health</TableHead>
+                    <TableHead>Connection</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {providers.data.providers.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell className="font-medium">{row.label || row.provider}</TableCell>
+                      <TableCell>{row.catalog?.label || row.provider}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{row.adapter_type || row.catalog?.lane || 'api'}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={row.is_default ? 'default' : row.status}>
+                          {row.is_default ? 'default' : row.status}
+                        </StatusBadge>
+                      </TableCell>
+                      <TableCell>
+                        {row.health_checked_at ? (
+                          <StatusBadge
+                            status={row.health_ok ? 'ok' : 'unhealthy'}
+                            title={row.health_error || row.health_mode || ''}
+                          >
+                            {row.health_ok ? row.health_mode || 'ok' : 'unhealthy'}
+                          </StatusBadge>
+                        ) : (
+                          <StatusBadge status="muted" muted>
+                            unchecked
+                          </StatusBadge>
                         )}
-                        <Button variant="ghost" onClick={() => deleteUser(u)}>Delete</Button>
-                      </>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+                      </TableCell>
+                      <TableCell>
+                        {connectionById[row.id] ? (
+                          <StatusBadge status={connectionById[row.id].ok ? 'connected' : 'failed'}>
+                            {connectionById[row.id].ok ? 'connected' : 'failed'}
+                          </StatusBadge>
+                        ) : (
+                          <StatusBadge status="muted" muted>
+                            untested
+                          </StatusBadge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap justify-end gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => testConnection(row.id)}>
+                            Test
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => sendWarmup(row.id)}>
+                            Warm-up
+                          </Button>
+                          {!row.is_default && (
+                            <Button variant="ghost" size="sm" onClick={() => setDefault(row.id)}>
+                              Set default
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+            <div className="rounded-md border bg-muted/40 px-3 py-2 font-mono text-xs text-muted-foreground">
+              API webhooks: /webhooks/&#123;provider&#125;/inbound · /status (vonage, twilio, telnyx, bandwidth, zoom, ringox, 3cx)
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      <motion.div {...panelMotion} className="mb-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Globe className="h-5 w-5" />
+              Browser automation profiles (DOM/BOM)
+            </CardTitle>
+            <CardDescription>
+              Headless dialers (Google Voice, advertiser portals) run through the Python automation worker.
+              API dialers use REST/webhooks above.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!browserProfiles.data?.profiles?.length && (
+              <p className="text-sm text-muted-foreground">
+                No browser profiles yet. Add a Google Voice or Advertiser backend to auto-create one.
+              </p>
+            )}
+            {Boolean(browserProfiles.data?.profiles?.length) && (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Label</TableHead>
+                    <TableHead>Adapter</TableHead>
+                    <TableHead>Portal</TableHead>
+                    <TableHead>Engine</TableHead>
+                    <TableHead>Selectors</TableHead>
+                    <TableHead>Session</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {browserProfiles.data.profiles.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell className="font-medium">{row.label || row.adapter_id}</TableCell>
+                      <TableCell>{row.adapter_id}</TableCell>
+                      <TableCell className="max-w-[180px] truncate">{row.base_url || '—'}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{row.engine}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{row.selector_version || 'v1'}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={row.session_status}>{row.session_status}</StatusBadge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap justify-end gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => browserLogin(row.id)}>
+                            Login
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => browserSession(row.id)}>
+                            Check
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => browserPoll(row.id)}>
+                            Poll
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => migrateSelectors(row.id)}>
+                            v2
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {notice && <NoticeAlert message={notice} />}
+
+      <motion.div {...panelMotion} className="mb-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Activity className="h-5 w-5" />
+              Platform health & observability
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <StatCard
+                label="Database"
+                value={healthDetail.data?.database ? 'OK' : '—'}
+                hint={`${healthDetail.data?.messages ?? 0} messages`}
+              />
+              <StatCard
+                label="Backends"
+                value={healthDetail.data?.providers ?? 0}
+                hint={healthDetail.data?.platform?.deliveryMode || 'checking'}
+              />
+              <StatCard
+                label="Worker"
+                value={
+                  !healthDetail.data?.automationWorker?.configured
+                    ? 'N/A'
+                    : healthDetail.data.automationWorker.ok
+                      ? 'OK'
+                      : 'Down'
+                }
+                hint="Browser lane automation"
+              />
+              <StatCard
+                label="Webhooks"
+                value={webhookLogs.data?.logs?.length ?? 0}
+                hint="Recent events"
+              />
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-3">
+              <div className="space-y-3">
+                <h4 className="font-display text-sm font-semibold">Webhook log</h4>
+                {!webhookLogs.data?.logs?.length && (
+                  <p className="text-sm text-muted-foreground">No webhook events yet.</p>
+                )}
+                {Boolean(webhookLogs.data?.logs?.length) && (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Provider</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Verified</TableHead>
+                        <TableHead>When</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {webhookLogs.data.logs.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell>{row.provider}</TableCell>
+                          <TableCell>{row.event_type}</TableCell>
+                          <TableCell>
+                            <StatusBadge status={row.verified ? 'yes' : 'no'}>
+                              {row.verified ? 'yes' : 'no'}
+                            </StatusBadge>
+                          </TableCell>
+                          <TableCell>{new Date(row.created_at).toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="font-display text-sm font-semibold">Audit trail</h4>
+                {!platformAudit.data?.audit?.length && (
+                  <p className="text-sm text-muted-foreground">No audit entries yet.</p>
+                )}
+                {Boolean(platformAudit.data?.audit?.length) && (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Action</TableHead>
+                        <TableHead>Actor</TableHead>
+                        <TableHead>When</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {platformAudit.data.audit.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell>{row.action}</TableCell>
+                          <TableCell>{row.actor_user_id}</TableCell>
+                          <TableCell>{new Date(row.created_at).toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="font-display text-sm font-semibold">Webhook dead letters</h4>
+                {!deadLetters.data?.deadLetters?.length && (
+                  <p className="text-sm text-muted-foreground">No failed webhooks pending retry.</p>
+                )}
+                {Boolean(deadLetters.data?.deadLetters?.length) && (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Provider</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Error</TableHead>
+                        <TableHead>Retries</TableHead>
+                        <TableHead />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {deadLetters.data.deadLetters.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell>{row.provider}</TableCell>
+                          <TableCell>{row.event_type}</TableCell>
+                          <TableCell className="max-w-[160px] truncate">{row.error_message}</TableCell>
+                          <TableCell>{row.retry_count}</TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={async () => {
+                                await api(`/api/super/webhook-dead-letters/${row.id}/retry`, { method: 'POST' });
+                                deadLetters.refresh();
+                                webhookLogs.refresh();
+                              }}
+                            >
+                              Retry
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+            </div>
+
+            <Button
+              variant="ghost"
+              onClick={() => {
+                healthDetail.refresh();
+                webhookLogs.refresh();
+                deadLetters.refresh();
+                platformAudit.refresh();
+              }}
+            >
+              <RefreshCw className="mr-1.5 h-4 w-4" />
+              Refresh observability
+            </Button>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      <motion.div {...panelMotion} className="mb-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Pending approvals</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!pendingApprovals.data?.length && (
+              <p className="text-sm text-muted-foreground">No users awaiting approval.</p>
+            )}
+            {Boolean(pendingApprovals.data?.length) && (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Org</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pendingApprovals.data.map((u) => (
+                    <TableRow key={u.id}>
+                      <TableCell>{u.name}</TableCell>
+                      <TableCell>{u.email}</TableCell>
+                      <TableCell>{u.phone || '—'}</TableCell>
+                      <TableCell>{u.organization_id || '—'}</TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="sm" onClick={() => approveUser(u)}>
+                          Approve
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      <section className="mb-6 grid gap-4 lg:grid-cols-2">
+        <motion.div {...panelMotion}>
+          <Card className="h-full">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <UserCog className="h-5 w-5" />
+                Create admin (+ new organization)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form className="space-y-3" onSubmit={createAdmin}>
+                <Input label="Admin name" name="name" required />
+                <Input label="Email" name="email" type="email" required />
+                <Input label="Password" name="password" type="password" required />
+                <Input label="Organization name" name="org_name" required />
+                <div className="space-y-1.5">
+                  <Label>Plan preset</Label>
+                  <select name="subscription_plan" defaultValue={ADMIN_LIMIT_DEFAULTS.plan} className={selectClassName}>
+                    <option value="starter">Starter (1,000 msgs / 2 numbers)</option>
+                    <option value="pro">Pro (5,000 msgs / 10 numbers)</option>
+                    <option value="enterprise">Enterprise (50,000 msgs / 50 numbers)</option>
+                  </select>
+                </div>
+                <Input
+                  label="Monthly message limit"
+                  name="message_limit_monthly"
+                  type="number"
+                  min="0"
+                  defaultValue={String(ADMIN_LIMIT_DEFAULTS.message_limit_monthly)}
+                />
+                <Input
+                  label="Number limit"
+                  name="number_limit"
+                  type="number"
+                  min="0"
+                  defaultValue={String(ADMIN_LIMIT_DEFAULTS.number_limit)}
+                />
+                <Button type="submit">Create admin</Button>
+              </form>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div {...panelMotion}>
+          <Card className="h-full">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <UserPlus className="h-5 w-5" />
+                Create user (under admin)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form className="space-y-3" onSubmit={createUser}>
+                <Input label="User name" name="name" required />
+                <Input label="Email" name="email" type="email" required />
+                <Input label="Password" name="password" type="password" required />
+                <Input label="Phone (optional)" name="phone" />
+                <div className="space-y-1.5">
+                  <Label>Managing admin</Label>
+                  <select name="managed_by_admin_id" required defaultValue="" className={selectClassName}>
+                    <option value="" disabled>
+                      Select admin…
+                    </option>
+                    {adminUsers.map((admin) => (
+                      <option key={admin.id} value={admin.id}>
+                        {admin.name} ({admin.email})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Plan preset</Label>
+                  <select name="subscription_plan" defaultValue={USER_LIMIT_DEFAULTS.plan} className={selectClassName}>
+                    <option value="starter">Starter (1,000 msgs / 2 numbers)</option>
+                    <option value="pro">Pro (5,000 msgs / 10 numbers)</option>
+                    <option value="enterprise">Enterprise (50,000 msgs / 50 numbers)</option>
+                  </select>
+                </div>
+                <Input
+                  label="Monthly message limit"
+                  name="message_limit_monthly"
+                  type="number"
+                  min="0"
+                  defaultValue={String(USER_LIMIT_DEFAULTS.message_limit_monthly)}
+                />
+                <Input
+                  label="Number limit"
+                  name="number_limit"
+                  type="number"
+                  min="0"
+                  defaultValue={String(USER_LIMIT_DEFAULTS.number_limit)}
+                />
+                <Button type="submit">Create user</Button>
+              </form>
+            </CardContent>
+          </Card>
+        </motion.div>
       </section>
+
+      <motion.div {...panelMotion} className="mb-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Building2 className="h-5 w-5" />
+              Organizations
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!organizations.data?.organizations?.length && <p className="text-sm text-muted-foreground">Loading…</p>}
+            {Boolean(organizations.data?.organizations?.length) && (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Users</TableHead>
+                    <TableHead>Delivery</TableHead>
+                    <TableHead>Admin</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {organizations.data.organizations.map((org) => (
+                    <TableRow key={org.id}>
+                      <TableCell className="font-medium">{org.brand_name || org.name}</TableCell>
+                      <TableCell>{org.user_count}</TableCell>
+                      <TableCell>
+                        <StatusBadge status={org.delivery_mode === 'live' ? 'live' : 'sandbox'}>
+                          {org.delivery_mode}
+                        </StatusBadge>
+                      </TableCell>
+                      <TableCell>{org.admin_name || '—'}</TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="sm" onClick={() => toggleOrgLive(org)}>
+                          Toggle live
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      <motion.div {...panelMotion} className="mb-6">
+        <Card>
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Users className="h-5 w-5" />
+              Platform users
+            </CardTitle>
+            <div className="flex flex-wrap gap-1">
+              {['all', 'admin', 'user'].map((filter) => (
+                <Button
+                  key={filter}
+                  variant={roleFilter === filter ? 'primary' : 'ghost'}
+                  size="sm"
+                  onClick={() => setRoleFilter(filter)}
+                >
+                  {filter === 'all' ? 'All' : filter === 'admin' ? 'Admins' : 'Users'}
+                </Button>
+              ))}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {!filteredUsers.length && (
+              <p className="text-sm text-muted-foreground">
+                {users.loading ? 'Loading users…' : 'No users match this filter.'}
+              </p>
+            )}
+            {Boolean(filteredUsers.length) && (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Org</TableHead>
+                    <TableHead>Plan</TableHead>
+                    <TableHead>Limits</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredUsers.map((u) => (
+                    <TableRow key={u.id}>
+                      <TableCell className="font-medium">{u.name}</TableCell>
+                      <TableCell>{u.email}</TableCell>
+                      <TableCell>{u.role}</TableCell>
+                      <TableCell>{u.organization_id || '—'}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{u.subscription_plan || '—'}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-xs text-muted-foreground">
+                          {u.message_limit_monthly ?? '—'} msgs / {u.number_limit ?? '—'} nums
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={u.status} />
+                      </TableCell>
+                      <TableCell>
+                        {u.role !== 'super_admin' && (
+                          <div className="flex flex-wrap justify-end gap-1">
+                            <Button variant="ghost" size="sm" onClick={() => openLimitsModal(u)}>
+                              Limits
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => suspendUser(u)}>
+                              {u.status === 'suspended' ? 'Reactivate' : 'Suspend'}
+                            </Button>
+                            {u.status === 'active' && u.role === 'user' && (
+                              <Button variant="ghost" size="sm" onClick={() => impersonateUser(u)}>
+                                Login as
+                              </Button>
+                            )}
+                            <Button variant="ghost" size="sm" onClick={() => deleteUser(u)}>
+                              Delete
+                            </Button>
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
 
       {limitsUser && (
         <Modal title={`Set limits — ${limitsUser.name}`} onClose={() => setLimitsUser(null)} wide>
-          <form className="stack" onSubmit={saveLimits}>
-            <label className="field">
-              <span>Plan preset</span>
-              <select
-                value={limitsForm.preset}
-                onChange={(e) => applyLimitsPreset(e.target.value)}
-              >
-                <option value="starter">Starter (1,000 / 2)</option>
-                <option value="pro">Pro (5,000 / 10)</option>
-                <option value="enterprise">Enterprise (50,000 / 50)</option>
-                <option value="custom">Custom</option>
-              </select>
-            </label>
+          <form className="space-y-3" onSubmit={saveLimits}>
+            <div className="space-y-1.5">
+              <Label>Plan preset</Label>
+              <Select value={limitsForm.preset} onValueChange={applyLimitsPreset}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select preset" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="starter">Starter (1,000 / 2)</SelectItem>
+                  <SelectItem value="pro">Pro (5,000 / 10)</SelectItem>
+                  <SelectItem value="enterprise">Enterprise (50,000 / 50)</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <Input
               label="Plan name"
               value={limitsForm.plan}
@@ -869,7 +1235,9 @@ export default function SuperAdminConsole() {
               type="number"
               min="0"
               value={limitsForm.message_limit_monthly}
-              onChange={(e) => setLimitsForm({ ...limitsForm, message_limit_monthly: e.target.value, preset: 'custom' })}
+              onChange={(e) =>
+                setLimitsForm({ ...limitsForm, message_limit_monthly: e.target.value, preset: 'custom' })
+              }
               required
             />
             <Input
@@ -886,9 +1254,11 @@ export default function SuperAdminConsole() {
               value={limitsForm.subscription_expires_at}
               onChange={(e) => setLimitsForm({ ...limitsForm, subscription_expires_at: e.target.value })}
             />
-            <div className="row-actions">
+            <div className="flex flex-wrap gap-2 pt-2">
               <Button type="submit">Save limits</Button>
-              <Button variant="ghost" type="button" onClick={() => setLimitsUser(null)}>Cancel</Button>
+              <Button variant="ghost" type="button" onClick={() => setLimitsUser(null)}>
+                Cancel
+              </Button>
             </div>
           </form>
         </Modal>

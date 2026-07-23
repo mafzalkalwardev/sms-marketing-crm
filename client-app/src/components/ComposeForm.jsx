@@ -8,6 +8,10 @@ import LinePicker from './LinePicker';
 import SaveContactBar from './SaveContactBar';
 import { formatStatus } from '../lib/formatStatus';
 import { isSavedContact } from '../lib/contactUtils';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
 
 export default function ComposeForm({ initialTo = '', onSent, onCancel, onContactSaved }) {
   const contacts = useAsync(() => api('/api/contacts'), []);
@@ -72,20 +76,18 @@ export default function ComposeForm({ initialTo = '', onSent, onCancel, onContac
   };
 
   return (
-    <form className="compose-form" onSubmit={send}>
+    <form className="space-y-4" onSubmit={send}>
       {!workspace.data?.messagingReady && (
-        <div className="alert warn">Add a business line under <strong>My numbers</strong> to send from any dialer backend.</div>
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+          Add a business line under <strong>My numbers</strong> to send from any dialer backend.
+        </div>
       )}
 
-      <LinePicker
-        lines={lines}
-        value={form.from}
-        onChange={(from) => setForm({ ...form, from })}
-      />
+      <LinePicker lines={lines} value={form.from} onChange={(from) => setForm({ ...form, from })} />
 
-      <label className="field">
-        <span>To</span>
-        <input
+      <div className="space-y-1.5">
+        <Label>To</Label>
+        <Input
           value={form.to}
           onChange={(e) => {
             setPendingSave(null);
@@ -100,25 +102,28 @@ export default function ComposeForm({ initialTo = '', onSent, onCancel, onContac
             <option key={c.id} value={c.phone}>{c.name}</option>
           ))}
         </datalist>
-      </label>
+      </div>
 
       {isNewNumber && (
-        <label className="field save-name-field">
-          <span>Save to contacts (optional)</span>
-          <input
+        <div className="space-y-1.5">
+          <Label>Save to contacts (optional)</Label>
+          <Input
             value={form.saveName}
             onChange={(e) => setForm({ ...form, saveName: e.target.value })}
             placeholder="Name for this number"
           />
-        </label>
+        </div>
       )}
 
-      <div className="compose-quick-picks">
+      <div className="flex flex-wrap gap-2">
         {contacts.data?.filter((c) => isSavedContact(c)).slice(0, 8).map((c) => (
           <button
             key={c.id}
             type="button"
-            className={`chip ${form.to === c.phone ? 'active' : ''}`}
+            className={cn(
+              'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+              form.to === c.phone ? 'border-primary bg-accent text-accent-foreground' : 'hover:bg-muted'
+            )}
             onClick={() => {
               setPendingSave(null);
               setForm({ ...form, to: c.phone, saveName: '' });
@@ -129,36 +134,45 @@ export default function ComposeForm({ initialTo = '', onSent, onCancel, onContac
         ))}
       </div>
 
-      <button type="button" className="text-btn" onClick={() => setShowKeypad((v) => !v)}>
+      <Button type="button" variant="ghost" onClick={() => setShowKeypad((v) => !v)}>
         {showKeypad ? 'Hide keypad' : 'Use number keypad'}
-      </button>
+      </Button>
       {showKeypad && (
-        <div className="keypad-wrap">
+        <div className="space-y-2">
           <Dialpad value={form.to} onChange={(to) => setForm({ ...form, to })} />
-          <div className="dialer-actions">
+          <div className="flex gap-2">
             <Button type="button" variant="ghost" onClick={() => setForm({ ...form, to: form.to.slice(0, -1) })}>Delete</Button>
             <Button type="button" variant="ghost" onClick={() => setForm({ ...form, to: '' })}>Clear</Button>
           </div>
         </div>
       )}
 
-      <label className="field">
-        <span>Message</span>
-        <textarea
+      <div className="space-y-1.5">
+        <Label>Message</Label>
+        <Textarea
           value={form.message}
           onChange={(e) => setForm({ ...form, message: e.target.value })}
           placeholder="Write your text here..."
           rows={4}
           required
         />
-      </label>
+      </div>
 
       {selected?.is_unsubscribed && (
-        <div className="alert error">This contact unsubscribed. You can’t text them.</div>
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          This contact unsubscribed. You can’t text them.
+        </div>
       )}
 
       {status && (
-        <div className={status.startsWith('Sent') ? 'alert success' : 'alert error'}>{status}</div>
+        <div className={cn(
+          'rounded-md border px-3 py-2 text-sm',
+          status.startsWith('Sent')
+            ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+            : 'border-destructive/30 bg-destructive/10 text-destructive'
+        )}>
+          {status}
+        </div>
       )}
 
       {pendingSave && (
@@ -173,9 +187,9 @@ export default function ComposeForm({ initialTo = '', onSent, onCancel, onContac
         />
       )}
 
-      <div className="compose-actions">
+      <div className="flex justify-end gap-2">
         {onCancel && <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>}
-        <Button className="send-btn" disabled={!canSend || sending}>
+        <Button disabled={!canSend || sending}>
           {sending ? 'Sending…' : 'Send message'}
         </Button>
       </div>
