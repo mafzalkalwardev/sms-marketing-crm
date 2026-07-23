@@ -165,7 +165,7 @@ vercel link
 vercel deploy --prod
 ```
 
-Set `REACT_APP_API_URL=https://signalmint-api.vercel.app`
+Set `VITE_API_URL=https://signalmint-api.vercel.app`
 
 ## Verification
 
