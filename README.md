@@ -42,11 +42,28 @@ Open the **frontend URL** to sign in. The API URL is for health checks and integ
 
 ## Architecture
 
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for system diagram, roles, live delivery gates, and deploy URLs.
+
 ```text
 React dialer UI  →  Node API (PostgreSQL)  →  Provider router
-                                              ├─ Vonage / Twilio / Mock (API lane)
+                                              ├─ Twilio / Vonage / Mock (API lane)
                                               └─ automation-worker (browser lane)
 ```
+
+### Go live (Twilio)
+
+1. Unpause your Twilio account and buy an SMS-capable number
+2. Set Vercel env on `signalmint-api`:
+   - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_DEFAULT_FROM`
+   - `SMS_SANDBOX_MODE=false`, `VONAGE_MOCK_MODE=false`
+   - `PUBLIC_BACKEND_URL=https://signalmint-api.vercel.app`
+   - `AUTO_LIVE_ORGS=true` (promotes active orgs to live on boot)
+3. Configure Twilio webhooks:
+   - Inbound: `https://signalmint-api.vercel.app/webhooks/twilio/inbound`
+   - Status: `https://signalmint-api.vercel.app/webhooks/twilio/status`
+4. Redeploy API → Super Admin → Test connection / warm-up SMS
+
+**Security:** Never commit Twilio tokens to git. Rotate the Auth Token if it was pasted into chat or tickets.
 
 ## Public signup flow
 

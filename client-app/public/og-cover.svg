@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="SignalMint">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#312e81"/>
+      <stop offset="55%" stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <circle cx="980" cy="120" r="180" fill="#818cf8" opacity="0.25"/>
+  <circle cx="160" cy="520" r="220" fill="#c7d2fe" opacity="0.18"/>
+  <text x="80" y="250" fill="#eef2ff" font-family="Segoe UI, Arial, sans-serif" font-size="72" font-weight="700">SignalMint</text>
+  <text x="80" y="340" fill="#c7d2fe" font-family="Segoe UI, Arial, sans-serif" font-size="36">Business SMS dialer &amp; marketing CRM</text>
+  <text x="80" y="410" fill="#a5b4fc" font-family="Segoe UI, Arial, sans-serif" font-size="28">Inbox · Campaigns · Live Twilio delivery</text>
+</svg>

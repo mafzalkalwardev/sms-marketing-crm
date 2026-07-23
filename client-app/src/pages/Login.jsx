@@ -12,7 +12,7 @@ const STEPS = {
   pending: 'pending_approval',
 };
 
-export default function Login() {
+export default function Login({ onBack }) {
   const { login, register, verifyEmail, verifyPhone, resendOtp } = useAuth();
   const [step, setStep] = useState(STEPS.login);
   const [error, setError] = useState('');
@@ -115,6 +115,9 @@ export default function Login() {
   return (
     <main className="auth-page">
       <section className="auth-card auth-card-centered">
+        {onBack && (
+          <button type="button" className="linkish auth-back" onClick={onBack}>← Back to SignalMint</button>
+        )}
         <Logo />
         <h1>Welcome to SignalMint</h1>
         <p className="auth-lead">Simple business texting — inbox, contacts, and your phone numbers in one place.</p>
