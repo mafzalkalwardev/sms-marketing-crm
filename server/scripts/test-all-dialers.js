@@ -23,6 +23,15 @@ const DIALER_FIXTURES = [
     body: { provider: 'telnyx', label: 'Test Telnyx', api_key: 'telnyx_key_test', api_secret: 'unused' },
   },
   {
+    id: 'clicksend',
+    body: {
+      provider: 'clicksend',
+      label: 'Test ClickSend',
+      api_key: 'clicksend_user_test',
+      api_secret: 'clicksend_key_test',
+    },
+  },
+  {
     id: 'bandwidth',
     body: {
       provider: 'bandwidth',
@@ -180,7 +189,7 @@ async function main() {
   }
 
   console.log('\n--- Webhook route smoke ---');
-  const webhookProviders = ['telnyx', 'bandwidth', 'zoom', 'ringox', '3cx', 'mock'];
+  const webhookProviders = ['telnyx', 'clicksend', 'bandwidth', 'zoom', 'ringox', '3cx', 'mock'];
   for (const provider of webhookProviders) {
     const inbound = await request(`/webhooks/${provider}/inbound`, {
       method: 'POST',

@@ -3,6 +3,7 @@ const verifyVonageWebhook = require('../middleware/verifyVonageWebhook');
 const verifyTwilioWebhook = require('../middleware/verifyTwilioWebhook');
 const inboundProcessor = require('../services/inboundProcessor');
 const webhookProcessor = require('../services/webhookProcessor');
+const sentProvider = require('../services/providers/sentProvider');
 
 const router = express.Router();
 router.use(express.json());
@@ -85,6 +86,27 @@ async function handlerMockStatus(req, res, next) {
   }
 }
 
+async function handlerSentCombined(req, res, next) {
+  try {
+    const field = String(req.body?.field || '').toLowerCase();
+    const event = String(req.body?.event || '').toLowerCase();
+
+    if (sentProvider.isSentInboundEvent?.(req.body)) {
+      const { status, body } = await inboundProcessor.processInboundWebhook('sent', req.body, { verified: false });
+      return res.status(status).json(body);
+    }
+
+    if (field === 'message') {
+      const result = await webhookProcessor.processStatusWebhook('sent', req.body, { verified: false });
+      return res.status(200).json(result);
+    }
+
+    return res.status(200).json({ ok: true, ignored: true, event: event || null });
+  } catch (e) {
+    return next(e);
+  }
+}
+
 module.exports = {
   router,
   createProviderWebhookHandler,
@@ -92,5 +114,6 @@ module.exports = {
   handlerTwilioStatus,
   handlerMockInbound,
   handlerMockStatus,
+  handlerSentCombined,
   verifyTwilioWebhook,
 };

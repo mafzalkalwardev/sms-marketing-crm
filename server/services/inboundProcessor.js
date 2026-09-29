@@ -14,14 +14,55 @@ function isStop(text) {
   return stopKeywords.includes(clean) || clean.startsWith('STOP ');
 }
 
-async function findUserByInboundLine(to) {
-  const number = await queryOne(
-    "SELECT user_id FROM numbers WHERE phone_number = $1 AND status = 'active' ORDER BY is_default DESC, id DESC LIMIT 1",
-    [to]
-  );
-  if (number?.user_id) {
-    return queryOne('SELECT id FROM users WHERE id = $1', [number.user_id]);
+async function normalizeInboundLine(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 5 || digits.length === 6) return digits;
+  return normalizePhone(raw);
+}
+
+async function findUserByInboundLine(to, provider) {
+  const candidates = new Set([normalizeInboundLine(to)]);
+  const digits = String(to || '').replace(/\D/g, '');
+  if (digits) candidates.add(digits);
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const number = await queryOne(
+      "SELECT user_id FROM numbers WHERE phone_number = $1 AND status = 'active' ORDER BY is_default DESC, id DESC LIMIT 1",
+      [candidate]
+    );
+    if (number?.user_id) {
+      return queryOne('SELECT id FROM users WHERE id = $1', [number.user_id]);
+    }
   }
+
+  // Sent often delivers OTP/inbound via a short code (e.g. 725157), not the long code in numbers.
+  if (provider === 'sent' && process.env.SENT_DEFAULT_FROM) {
+    const sentLine = normalizeInboundLine(process.env.SENT_DEFAULT_FROM);
+    const sentNumber = await queryOne(
+      "SELECT user_id FROM numbers WHERE phone_number = $1 AND status = 'active' ORDER BY is_default DESC, id DESC LIMIT 1",
+      [sentLine]
+    );
+    if (sentNumber?.user_id) {
+      return queryOne('SELECT id FROM users WHERE id = $1', [sentNumber.user_id]);
+    }
+  }
+
+  const extraLines = String(process.env.SENT_INBOUND_IDENTIFIERS || '')
+    .split(',')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  for (const line of extraLines) {
+    if (candidates.has(normalizeInboundLine(line)) || candidates.has(line.replace(/\D/g, ''))) {
+      const owner =
+        (await queryOne("SELECT id FROM users WHERE email = 'super_admin@signalmint.local' LIMIT 1")) ||
+        (await queryOne("SELECT id FROM users WHERE role = 'super_admin' ORDER BY id LIMIT 1"));
+      if (owner) return owner;
+    }
+  }
+
   return null;
 }
 
@@ -80,7 +121,7 @@ async function processInboundWebhook(provider, body, { verified = false, forceRe
   }
 
   try {
-    const user = await findUserByInboundLine(to);
+    const user = await findUserByInboundLine(to, provider);
     if (!user) {
       await query(
         'INSERT INTO webhook_logs (provider, event_type, payload, verified) VALUES ($1, $2, $3::jsonb, $4)',

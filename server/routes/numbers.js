@@ -11,7 +11,7 @@ router.use(authenticate);
 
 router.get('/', async (req, res, next) => {
   try {
-    let sql = `SELECT id, user_id, workspace_id, phone_number, country, type, label, status, is_default, created_at, updated_at
+    let sql = `SELECT id, user_id, workspace_id, phone_number, country, type, label, status, is_default, provider, provider_id, created_at, updated_at
        FROM numbers WHERE 1=1`;
     const params = [];
     let idx = 1;

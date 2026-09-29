@@ -33,11 +33,13 @@ function estimateCost(segments, country = 'US', providerKey = 'mock') {
     vonage: 0.008,
     twilio: 0.0079,
     telnyx: 0.007,
+    clicksend: 0.03,
     bandwidth: 0.0075,
     zoom: 0.008,
     ringox: 0.008,
     '3cx': 0.008,
     browser: 0,
+    esim: 0,
   };
   const countryRates = { US: 0.008, UK: 0.045, CA: 0.0075, AU: 0.04 };
   const base = providerRates[providerKey] ?? countryRates[country] ?? countryRates.US;
@@ -168,6 +170,7 @@ async function sendTextMessage({
   providerId = null,
   campaignId = null,
   idempotencyKey = null,
+  conversationReply = false,
 }) {
   const toNorm = normalizePhone(to);
   const defaultNumber = await defaultSenderForUser(user.id);
@@ -247,8 +250,10 @@ async function sendTextMessage({
     to: toNorm,
     from: requestedFrom,
     text,
+    messageId: saved.id,
     organizationDeliveryMode,
     userStatus: user.status,
+    conversationReply,
   });
 
   const mode = providerResult.mode || 'mock';

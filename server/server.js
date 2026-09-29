@@ -69,6 +69,8 @@ app.use('/api/inbox', inboxRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/manual-sms', smsRoutes);
 app.use('/api/numbers', numberRoutes);
+app.use('/api/esim', require('./routes/esim'));
+app.use('/api/esim-agent', require('./routes/esimAgent'));
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/compliance', require('./routes/compliance'));
@@ -82,6 +84,7 @@ app.post('/webhooks/twilio/inbound', webhookRoutes.verifyTwilioWebhook, webhookR
 app.post('/webhooks/twilio/status', webhookRoutes.verifyTwilioWebhook, webhookRoutes.handlerTwilioStatus);
 app.post('/webhooks/mock/inbound', webhookRoutes.handlerMockInbound);
 app.post('/webhooks/mock/status', webhookRoutes.handlerMockStatus);
+app.post('/webhooks/sent', webhookRoutes.handlerSentCombined);
 
 for (const providerId of webhookProcessor.API_WEBHOOK_PROVIDERS) {
   if (['vonage', 'twilio', 'mock'].includes(providerId)) continue;

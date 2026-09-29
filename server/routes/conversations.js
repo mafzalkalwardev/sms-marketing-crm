@@ -138,6 +138,7 @@ router.post('/:id/messages', authenticate, async (req, res, next) => {
       message,
       contactName: conversation.name,
       workspaceId,
+      conversationReply: true,
     });
 
     res.status(result.ok ? 200 : 502).json(sanitizeSendResult(result));

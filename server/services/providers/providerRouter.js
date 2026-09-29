@@ -27,7 +27,7 @@ async function getDefaultProviderRow() {
   );
 }
 
-async function resolveCredentials(providerRow) {
+async function resolveCredentials(providerRow, { fromNumber = null } = {}) {
   if (!providerRow) {
     return {
       providerId: null,
@@ -35,6 +35,7 @@ async function resolveCredentials(providerRow) {
       adapter: mockProvider,
       credentials: {},
       adapterType: 'api',
+      esimPaired: false,
     };
   }
 
@@ -43,6 +44,7 @@ async function resolveCredentials(providerRow) {
   const adapterType = providerRow.adapter_type || catalog?.lane || 'api';
   const adapter = ADAPTERS[providerKey] || mockProvider;
   let credentials = {};
+  let esimPaired = false;
 
   if (providerRow.encrypted_api_key && providerRow.encrypted_api_secret) {
     try {
@@ -82,8 +84,33 @@ async function resolveCredentials(providerRow) {
       authToken: process.env.TWILIO_AUTH_TOKEN,
     };
   }
+  if (providerKey === 'telnyx' && !credentials.apiKey) {
+    credentials = {
+      apiKey: process.env.TELNYX_API_KEY,
+    };
+  }
+  if (providerKey === 'clicksend' && !credentials.apiKey) {
+    credentials = {
+      apiKey: process.env.CLICKSEND_USERNAME,
+      apiSecret: process.env.CLICKSEND_API_KEY,
+    };
+  }
+  if (providerKey === 'sent' && !credentials.apiKey) {
+    credentials = {
+      apiKey: process.env.SENT_API_KEY,
+    };
+  }
 
-  return { providerId: providerRow.id, providerKey, adapter, credentials, adapterType };
+  if (providerKey === 'esim') {
+    const esimProvider = require('./esimProvider');
+    const phone = fromNumber || credentials.fromNumber || null;
+    if (phone) {
+      credentials = { ...credentials, fromNumber: phone };
+      esimPaired = Boolean(await esimProvider.findActiveProfile(phone));
+    }
+  }
+
+  return { providerId: providerRow.id, providerKey, adapter, credentials, adapterType, esimPaired };
 }
 
 function pickLiveAdapter() {
@@ -101,14 +128,14 @@ function pickLiveAdapter() {
   return null;
 }
 
-async function resolveForProviderId(providerId) {
+async function resolveForProviderId(providerId, { fromNumber = null } = {}) {
   const row = await getProviderRow(providerId);
   if (!row) {
     const error = new Error('Provider not found');
     error.status = 404;
     throw error;
   }
-  return resolveCredentials(row);
+  return resolveCredentials(row, { fromNumber });
 }
 
 async function resolveForNumber(fromNumber) {
@@ -119,7 +146,7 @@ async function resolveForNumber(fromNumber) {
 
   if (number?.provider_id) {
     const row = await getProviderRow(number.provider_id);
-    if (row) return resolveCredentials(row);
+    if (row) return resolveCredentials(row, { fromNumber });
   }
 
   if (number?.provider && ADAPTERS[number.provider]) {
@@ -129,7 +156,7 @@ async function resolveForNumber(fromNumber) {
       is_enabled: true,
       status: 'active',
     };
-    return resolveCredentials(envRow);
+    return resolveCredentials(envRow, { fromNumber });
   }
 
   if (number) {
@@ -147,7 +174,10 @@ async function resolveForNumber(fromNumber) {
   return { providerId: null, providerKey: 'mock', adapter: mockProvider, credentials: {}, adapterType: 'api' };
 }
 
-async function sendViaResolved(resolved, { to, from, text, organizationDeliveryMode, userStatus } = {}) {
+async function sendViaResolved(
+  resolved,
+  { to, from, text, messageId = null, organizationDeliveryMode, userStatus, conversationReply = false } = {}
+) {
   if (shouldUseMockSend(resolved, { organizationDeliveryMode, userStatus })) {
     const mock = await mockProvider.sendSms({ to, from, text, provider: resolved.providerKey });
     return mock;
@@ -166,6 +196,8 @@ async function sendViaResolved(resolved, { to, from, text, organizationDeliveryM
     to,
     from,
     text,
+    messageId,
+    conversationReply,
     credentials: resolved.credentials,
   });
 }

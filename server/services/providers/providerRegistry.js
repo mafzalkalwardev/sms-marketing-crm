@@ -1,11 +1,14 @@
 const vonageProvider = require('./vonageProvider');
 const twilioProvider = require('./twilioProvider');
 const telnyxProvider = require('./telnyxProvider');
+const clicksendProvider = require('./clicksendProvider');
 const bandwidthProvider = require('./bandwidthProvider');
 const zoomProvider = require('./zoomProvider');
 const tcxProvider = require('./tcxProvider');
 const ringoxProvider = require('./ringoxProvider');
+const sentProvider = require('./sentProvider');
 const mockProvider = require('./mockProvider');
+const esimProvider = require('./esimProvider');
 const { createBrowserDialerProvider } = require('./browserDialerProvider');
 const { listCatalog } = require('./providerCatalog');
 const { resolvePublicBackendUrl } = require('../../lib/publicUrl');
@@ -18,22 +21,27 @@ const ADAPTERS = {
   vonage: vonageProvider,
   twilio: twilioProvider,
   telnyx: telnyxProvider,
+  clicksend: clicksendProvider,
   bandwidth: bandwidthProvider,
   zoom: zoomProvider,
   ringox: ringoxProvider,
   '3cx': tcxProvider,
+  sent: sentProvider,
   google_voice: googleVoiceProvider,
   advertiser: advertiserProvider,
+  esim: esimProvider,
 };
 
 const API_WEBHOOK_PROVIDERS = [
   'vonage',
   'twilio',
   'telnyx',
+  'clicksend',
   'bandwidth',
   'zoom',
   'ringox',
   '3cx',
+  'sent',
   'mock',
 ];
 

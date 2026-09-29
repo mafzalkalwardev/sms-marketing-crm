@@ -518,14 +518,22 @@ export default function SuperAdminConsole() {
                       />
                     )}
                     <Input
-                      label={form.provider === 'twilio' ? 'Auth token' : 'API key'}
+                      label={
+                        form.provider === 'twilio'
+                          ? 'Auth token'
+                          : form.provider === 'clicksend'
+                            ? 'ClickSend username'
+                            : form.provider === 'sent'
+                              ? 'Sent API key'
+                              : 'API key'
+                      }
                       value={form.api_key}
                       onChange={(e) => setForm({ ...form, api_key: e.target.value })}
                       required
                     />
-                    {form.provider !== 'telnyx' && (
+                    {form.provider !== 'telnyx' && form.provider !== 'sent' && (
                       <Input
-                        label="API secret"
+                        label={form.provider === 'clicksend' ? 'ClickSend API key' : 'API secret'}
                         type="password"
                         value={form.api_secret}
                         onChange={(e) => setForm({ ...form, api_secret: e.target.value })}
@@ -696,7 +704,7 @@ export default function SuperAdminConsole() {
               </Table>
             )}
             <div className="rounded-md border bg-muted/40 px-3 py-2 font-mono text-xs text-muted-foreground">
-              API webhooks: /webhooks/&#123;provider&#125;/inbound · /status (vonage, twilio, telnyx, bandwidth, zoom, ringox, 3cx)
+              API webhooks: /webhooks/&#123;provider&#125;/inbound · /status (vonage, twilio, telnyx, bandwidth, zoom, ringox, 3cx, sent)
             </div>
           </CardContent>
         </Card>

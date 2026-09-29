@@ -26,6 +26,8 @@
     "test:live-readiness": "node scripts/test-live-readiness.js",
     "test:webhook-replay": "node scripts/test-webhook-replay.js",
     "test:browser-session": "node scripts/test-browser-session.js",
+    "test:esim": "node scripts/test-esim-lane.js",
+    "test:esim:unit": "node scripts/test-esim-unit.js",
     "test:compliance": "node scripts/test-compliance.js",
     "test:deploy-readiness": "node scripts/test-deploy-readiness.js",
     "test:all": "node scripts/run-all-tests.js",
@@ -43,7 +45,9 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
     "ioredis": "^5.11.1",
+    "jimp": "^0.22.12",
     "jsonwebtoken": "^9.0.3",
+    "jsqr": "^1.4.0",
     "pg": "^8.16.3",
     "twilio": "^5.8.0"
   }

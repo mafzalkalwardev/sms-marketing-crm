@@ -8,6 +8,7 @@ const ALWAYS = [
   'test:state',
   'test:message-audit',
   'test:dialers:unit',
+  'test:esim:unit',
   'test:campaign-queue',
   'test:campaign-fanout',
   'test:live-readiness',

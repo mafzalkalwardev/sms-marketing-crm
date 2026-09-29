@@ -5,8 +5,13 @@ node_modules/
 !.env.example
 !**/.env.example
 server/.env
+server/.env.vercel
+server/.env.local
 automation-worker/.env
 .env.local
+.vercel/
+**/.vercel/
+client-app/dist/
 *.db
 sms_crm.db
 server/sms_crm.db
@@ -16,6 +21,7 @@ build/
 client-app/build/
 client-app/test-results/
 client-app/playwright-report/
+server/uploads/
 
 # Python
 __pycache__/
@@ -26,3 +32,11 @@ venv/
 # IDE / OS
 Thumbs.db
 *.log
+
+# Android
+esim-agent/.gradle/
+esim-agent/app/build/
+esim-agent/build/
+esim-agent/local.properties
+*.apk
+*.aab

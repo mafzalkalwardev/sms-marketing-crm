@@ -29,7 +29,13 @@ async function fetchJson(url, options = {}) {
     data = { raw: text };
   }
   if (!response.ok) {
-    const error = new Error(data.errors?.[0]?.detail || data.message || data.error || `HTTP ${response.status}`);
+    const nested =
+      (typeof data.error === 'object' && data.error?.message) ||
+      (typeof data.error === 'string' && data.error) ||
+      null;
+    const error = new Error(
+      data.errors?.[0]?.detail || nested || data.message || `HTTP ${response.status}`
+    );
     error.status = response.status;
     error.response = data;
     throw error;

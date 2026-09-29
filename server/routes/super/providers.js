@@ -111,10 +111,16 @@ router.post('/', async (req, res, next) => {
     if (lane === 'api' && provider === 'telnyx' && !api_key) {
       return res.status(400).json({ error: 'Telnyx API key is required' });
     }
+    if (lane === 'api' && provider === 'sent' && !api_key) {
+      return res.status(400).json({ error: 'Sent API key is required' });
+    }
+    if (lane === 'api' && provider === 'clicksend' && (!api_key || !api_secret)) {
+      return res.status(400).json({ error: 'ClickSend username (api_key) and API key (api_secret) are required' });
+    }
     if (lane === 'api' && ['3cx', 'ringox'].includes(provider) && (!api_key || !base_url)) {
       return res.status(400).json({ error: 'API token and base URL are required for this dialer' });
     }
-    if (lane === 'api' && !['telnyx', '3cx', 'ringox'].includes(provider) && (!api_key || !api_secret)) {
+    if (lane === 'api' && !['telnyx', 'sent', '3cx', 'ringox', 'clicksend'].includes(provider) && (!api_key || !api_secret)) {
       return res.status(400).json({ error: 'API key and secret are required for API dialers' });
     }
     if (lane === 'browser' && !base_url) {

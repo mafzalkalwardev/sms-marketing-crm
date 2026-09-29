@@ -6,6 +6,7 @@ const fixtures = {
   vonage: { apiKey: 'k', apiSecret: 's' },
   twilio: { accountSid: 'AC123', authToken: 'token' },
   telnyx: { apiKey: 'k' },
+  clicksend: { apiKey: 'user', apiSecret: 'key' },
   bandwidth: { apiKey: 'u', apiSecret: 'p', accountId: '1', applicationId: 'app' },
   zoom: { apiKey: 'cid', apiSecret: 'sec', accountId: 'acc' },
   ringox: { apiKey: 'k', baseUrl: 'https://ringox.test' },
