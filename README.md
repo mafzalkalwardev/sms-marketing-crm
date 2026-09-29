@@ -8,10 +8,10 @@ Test the full platform online — no local Postgres or Docker needed.
 
 | Service | URL |
 |---------|-----|
-| **App (login here)** | https://client-app-alpha-livid.vercel.app |
-| **API** | https://signalmint-api.vercel.app |
-| **Health** | https://signalmint-api.vercel.app/api/health |
-| **API root** | https://signalmint-api.vercel.app/ |
+| **App (login here)** | https://client-app-two-opal.vercel.app |
+| **API** | https://signalmint-api-eight.vercel.app |
+| **Health** | https://signalmint-api-eight.vercel.app/api/health |
+| **GitHub** | https://github.com/mafzalkalwardev/sms-marketing-crm |
 
 Open the **frontend URL** to sign in. The API URL is for health checks and integrations only (visiting `/` in a browser shows JSON, not the app).
 
