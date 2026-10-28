@@ -1,44 +1,70 @@
-# SignalMint
+<div align="center">
 
-White-label business texting platform with an **opaque multi-provider backend**. Customers use the SignalMint dialer UI only — Vonage, Twilio, Telnyx, Bandwidth, Zoom, Google Voice (browser automation), RingoX, and 3CX run behind the scenes under Super Admin control.
+# SMS Marketing CRM
 
-## Live demo (no Docker required)
+<img src="https://readme-typing-svg.demolab.com?font=Inter&weight=700&size=28&duration=2800&pause=700&color=22C55E&center=true&vCenter=true&width=900&lines=Compliant+SMS+CRM+Dashboard;Vonage+API+Integration;Contacts%2C+Campaigns%2C+Messaging;Built+for+careful+SMS+ops" alt="Typing SVG" />
 
-Test the full platform online — no local Postgres or Docker needed.
+<p>
+  <img src="https://komarev.com/ghpvc/?username=mafzalkalwardev&label=Project%20Views&color=22c55e&style=for-the-badge" alt="Project views" />
+  <img src="https://img.shields.io/github/stars/mafzalkalwardev/sms-marketing-crm?style=for-the-badge&color=22c55e" alt="GitHub stars" />
+  <img src="https://img.shields.io/github/forks/mafzalkalwardev/sms-marketing-crm?style=for-the-badge&color=f59e0b" alt="GitHub forks" />
+  <img src="https://img.shields.io/github/license/mafzalkalwardev/sms-marketing-crm?style=for-the-badge&color=64748b" alt="License" />
+</p>
 
-| Service | URL |
-|---------|-----|
-| **App (login here)** | https://client-app-two-opal.vercel.app |
-| **API** | https://signalmint-api-eight.vercel.app |
-| **Health** | https://signalmint-api-eight.vercel.app/api/health |
-| **GitHub** | https://github.com/mafzalkalwardev/sms-marketing-crm |
+<p>
+  <img src="https://skillicons.dev/icons?i=js,nodejs,html,css" alt="Skill icons" />
+</p>
 
-Open the **frontend URL** to sign in. The API URL is for health checks and integrations only (visiting `/` in a browser shows JSON, not the app).
+<p>
+  <strong>Compliant SMS CRM and marketing dashboard with Vonage API integration for contacts, campaigns, and messaging workflows.</strong>
+</p>
 
-### Demo logins (production, after seed)
+</div>
 
-| Role | Email | Password | What you can do |
-|------|-------|----------|-----------------|
-| Super Admin | `super_admin@signalmint.local` | `password123` | All orgs, providers, impersonation, approvals |
-| Admin (FT Solutions) | `admin@ftsolutions.local` | `password123` | Manage own users, branding, API keys |
-| Admin (Acme) | `admin@acme.local` | `password123` | Separate org — cannot see FT users |
-| User (FT) | `user1@demo.local` | `password123` | Inbox, dialpad, contacts |
-| User (Acme) | `user2@demo.local` | `password123` | Inbox in Acme org only |
+---
 
-## What's new in v3.5 — Governance & live-ready auth
+## Trophy Cards
 
-- **OTP signup** — email + SMS verification codes, then admin approval before account activates
-- **Role hierarchy** — Super Admin → Admin (per org) → User with strict data isolation
-- **Super Admin powers** — create/suspend/delete admins & users, approve signups, **Login as** any user
-- **Admin powers** — create/delete users in own org only; cannot see other admins' teams
-- **JWT sessions** — server-side revocation on suspend; logout endpoint
-- **Per-org delivery mode** — Super Admin toggles sandbox/live per organization
-- **API root** — `GET /` returns service info (fixes confusing "Cannot GET /" error)
+<div align="center">
+  <img src="https://github-profile-trophy.vercel.app/?username=mafzalkalwardev&theme=algolia&no-frame=true&no-bg=true&margin-w=12&margin-h=12&column=4" alt="GitHub trophy cards" />
+</div>
 
-## What's new in v3.4
+---
 
-- **Inbox polling** — conversations refresh every 12s without manual reload
-- **TONY AI Agent** moved to standalone repo: `D:\TONY AI AGENT`
+## Stats Cards
+
+<div align="center">
+  <img height="165" src="https://github-readme-stats-sigma-five.vercel.app/api?username=mafzalkalwardev&show_icons=true&theme=tokyonight&hide_border=true&rank_icon=github" alt="GitHub stats" />
+  <img height="165" src="https://github-readme-stats-sigma-five.vercel.app/api/top-langs/?username=mafzalkalwardev&layout=compact&theme=tokyonight&hide_border=true" alt="Top languages" />
+</div>
+
+---
+
+## Activity Graph
+
+<div align="center">
+  <img src="https://github-readme-activity-graph.vercel.app/graph?username=mafzalkalwardev&theme=react-dark&hide_border=true&area=true" alt="GitHub activity graph" />
+</div>
+
+---
+
+## Contribution Snake
+
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mafzalkalwardev/google-voice-dispatch-agent/output/github-contribution-grid-snake-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/mafzalkalwardev/google-voice-dispatch-agent/output/github-contribution-grid-snake.svg">
+    <img alt="Contribution snake" src="https://raw.githubusercontent.com/mafzalkalwardev/google-voice-dispatch-agent/output/github-contribution-grid-snake.svg">
+  </picture>
+</div>
+
+---
+
+## SEO Keywords
+
+`SMS CRM` `Vonage` `marketing dashboard` `compliant SMS`
+
+---
 
 ## Architecture
 
