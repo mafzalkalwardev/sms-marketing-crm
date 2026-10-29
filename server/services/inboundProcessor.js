@@ -14,7 +14,7 @@ function isStop(text) {
   return stopKeywords.includes(clean) || clean.startsWith('STOP ');
 }
 
-async function normalizeInboundLine(value) {
+function normalizeInboundLine(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
   const digits = raw.replace(/\D/g, '');
